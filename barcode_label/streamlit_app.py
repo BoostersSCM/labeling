@@ -32,108 +32,59 @@ except:
 pd.set_option('display.encoding', 'utf-8')
 
 def get_korean_font(size):
-    """한글을 지원하는 폰트를 찾아서 반환"""
+    """한글을 지원하는 폰트를 찾아서 반환 (Streamlit Cloud 최적화)"""
     import platform
     import urllib.request
     import tempfile
-    import base64
-    import io
+
+    # 현재 파일의 디렉토리 경로
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # Streamlit Cloud 환경에서는 웹 폰트 사용
-    if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
-        # 먼저 프로젝트 내 폰트 파일 확인
-        local_fonts = [
-            os.path.join(current_dir, "fonts", "malgun.ttf"),  # 맑은 고딕을 최우선으로
-            os.path.join(current_dir, "fonts", "NotoSansCJK-Regular.ttf"),
-            os.path.join(current_dir, "fonts", "gulim.ttc"),
-            os.path.join(current_dir, "fonts", "dotum.ttc"),
-            os.path.join(current_dir, "fonts", "batang.ttc"),
-            os.path.join(current_dir, "fonts", "gungsuh.ttc")
-        ]
-        
-        for font_path in local_fonts:
-            if os.path.exists(font_path):
-                try:
-                    print(f"로컬 폰트 사용 시도: {font_path}")
-                    font = ImageFont.truetype(font_path, size)
-                    print(f"폰트 로드 성공: {font_path}")
-                    return font
-                except Exception as e:
-                    print(f"폰트 로드 실패 {font_path}: {e}")
-                    continue
-        
-        # 웹에서 폰트 다운로드 시도 (더 안정적인 URL 사용)
-        font_urls = [
-            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJK-Regular.otf",
-            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Chinese/NotoSansCJK-Regular.otf",
-            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/NotoSansCJK-Regular.otf",
-            "https://fonts.gstatic.com/s/notosanscjk/v36/NotoSansCJK-Regular.ttc",
-            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Korean/NotoSansCJK-Regular.otf"
-        ]
-        
-        for font_url in font_urls:
-            try:
-                font_path = os.path.join(tempfile.gettempdir(), f"NotoSansCJK-Regular-{hash(font_url)}.otf")
-                
-                if not os.path.exists(font_path):
-                    print(f"한글 폰트를 다운로드 중... ({font_url})")
-                    # 타임아웃 설정
-                    import socket
-                    socket.setdefaulttimeout(15)
-                    urllib.request.urlretrieve(font_url, font_path)
-                    print("폰트 다운로드 완료")
-                
-                # 폰트 파일이 존재하고 크기가 0이 아닌지 확인
-                if os.path.exists(font_path) and os.path.getsize(font_path) > 0:
-                    return ImageFont.truetype(font_path, size)
-                else:
-                    print(f"폰트 파일이 비어있거나 손상됨: {font_path}")
-                    continue
-                    
-            except Exception as e:
-                print(f"폰트 다운로드 실패 ({font_url}): {e}")
-                continue
-        
-        # 모든 다운로드 실패 시 기본 폰트 사용
-        print("모든 폰트 다운로드 실패, 기본 폰트 사용")
-        return ImageFont.load_default()
-    
-    # 로컬 환경에서는 시스템 폰트 사용
-    # Windows 시스템에서 사용 가능한 한글 폰트들
-    korean_fonts = [
-        "malgun.ttf",      # 맑은 고딕
-        "gulim.ttc",       # 굴림
-        "dotum.ttc",       # 돋움
-        "batang.ttc",      # 바탕
-        "gungsuh.ttc",     # 궁서
-        "nanumgothic.ttf", # 나눔고딕 (설치된 경우)
-        "NotoSansCJK-Regular.ttc",  # Noto Sans CJK
-    ]
-    
-    # macOS에서 사용 가능한 한글 폰트들
-    if platform.system() == "Darwin":
-        korean_fonts = [
-            "AppleGothic.ttf",
-            "Arial Unicode MS.ttf",
-            "NotoSansCJK-Regular.ttc",
-        ]
-    
-    # Linux에서 사용 가능한 한글 폰트들
-    elif platform.system() == "Linux":
-        korean_fonts = [
-            "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "NotoSansCJK-Regular.ttc",
-        ]
-    
-    # 폰트 찾기 시도
-    for font_name in korean_fonts:
+    # 1순위: 앱에 포함된 폰트 파일 사용
+    font_path = os.path.join(current_dir, "fonts", "NotoSansKR-Regular.otf")
+    print(f"1순위 폰트 경로 확인: {font_path}")
+
+    if os.path.exists(font_path):
         try:
-            return ImageFont.truetype(font_name, size)
-        except:
-            continue
+            print(f"앱에 포함된 폰트를 사용합니다: {font_path}")
+            return ImageFont.truetype(font_path, size)
+        except Exception as e:
+            print(f"앱 포함 폰트 로드 실패: {e}")
+
+    # 2순위: Streamlit Cloud 환경에서 웹 폰트 다운로드 (비상용)
+    if os.environ.get('STREAMLIT_CLOUD', False):
+        font_url = "https://github.com/google/fonts/raw/main/ofl/notosanskr/NotoSansKR-Regular.ttf"
+        try:
+            # 임시 디렉토리에 폰트 저장
+            font_filename = os.path.basename(font_url)
+            temp_font_path = os.path.join(tempfile.gettempdir(), font_filename)
+            
+            if not os.path.exists(temp_font_path):
+                print(f"웹 폰트를 다운로드합니다... ({font_url})")
+                urllib.request.urlretrieve(font_url, temp_font_path)
+            
+            print(f"다운로드한 웹 폰트를 사용합니다: {temp_font_path}")
+            return ImageFont.truetype(temp_font_path, size)
+        except Exception as e:
+            print(f"웹 폰트 다운로드 또는 로드 실패: {e}")
+
+    # 3순위: 로컬 환경(Windows, macOS 등)에서 시스템 폰트 탐색
+    system = platform.system()
+    if system == "Windows":
+        font_name = "malgun.ttf"  # 맑은 고딕
+    elif system == "Darwin": # macOS
+        font_name = "AppleGothic.ttf"
+    elif system == "Linux":
+        # Linux에서는 다양한 경로를 확인해야 할 수 있음
+        font_name = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
     
-    # 한글 폰트를 찾지 못한 경우 기본 폰트 사용
+    try:
+        return ImageFont.truetype(font_name, size)
+    except Exception:
+        pass # 시스템 폰트 못찾으면 다음으로 넘어감
+
+    # 최후의 수단: 기본 폰트 사용 (한글 깨짐)
+    print("경고: 한글 지원 폰트를 찾지 못했습니다. 기본 폰트를 사용합니다.")
     return ImageFont.load_default()
 
 def safe_text(text):
