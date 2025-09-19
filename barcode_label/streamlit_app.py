@@ -39,7 +39,7 @@ def get_korean_font(size):
     import base64
     import io
     
-    # Streamlit Cloud 환경에서는 임베디드 폰트 사용
+    # Streamlit Cloud 환경에서는 웹 폰트 사용
     if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
         # 먼저 프로젝트 내 폰트 파일 확인
         local_font_path = os.path.join(current_dir, "fonts", "NotoSansCJK-Regular.ttf")
@@ -49,24 +49,13 @@ def get_korean_font(size):
             except:
                 pass
         
-        # 임베디드 폰트 데이터 시도 (Base64 인코딩된 폰트)
-        try:
-            # 간단한 한글 폰트를 Base64로 인코딩하여 포함
-            # 실제로는 더 큰 폰트 데이터가 필요하지만, 여기서는 기본 폰트 사용
-            default_font = ImageFont.load_default()
-            return default_font
-        except:
-            pass
-        
         # 웹에서 폰트 다운로드 시도 (더 안정적인 URL 사용)
         font_urls = [
             "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJK-Regular.otf",
             "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Chinese/NotoSansCJK-Regular.otf",
             "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/NotoSansCJK-Regular.otf",
             "https://fonts.gstatic.com/s/notosanscjk/v36/NotoSansCJK-Regular.ttc",
-            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Korean/NotoSansCJK-Regular.otf",
-            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJK-Regular.otf",
-            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Chinese/NotoSansCJK-Regular.otf"
+            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Korean/NotoSansCJK-Regular.otf"
         ]
         
         for font_url in font_urls:
@@ -77,7 +66,7 @@ def get_korean_font(size):
                     print(f"한글 폰트를 다운로드 중... ({font_url})")
                     # 타임아웃 설정
                     import socket
-                    socket.setdefaulttimeout(10)
+                    socket.setdefaulttimeout(15)
                     urllib.request.urlretrieve(font_url, font_path)
                     print("폰트 다운로드 완료")
                 
@@ -94,12 +83,7 @@ def get_korean_font(size):
         
         # 모든 다운로드 실패 시 기본 폰트 사용
         print("모든 폰트 다운로드 실패, 기본 폰트 사용")
-        # 기본 폰트를 사용하되 한글 지원을 위한 설정
-        try:
-            return ImageFont.load_default()
-        except:
-            # 최후의 수단으로 None 반환
-            return None
+        return ImageFont.load_default()
     
     # 로컬 환경에서는 시스템 폰트 사용
     # Windows 시스템에서 사용 가능한 한글 폰트들
@@ -685,13 +669,22 @@ def save_issue_history(product_code, lot, expiry, version, location, filename, c
         # 구글 스프레드시트에 저장 (가능한 경우)
         if GOOGLE_SERVICES_AVAILABLE:
             try:
+                print(f"Google Sheets 저장 시도: {issue_data}")
                 # 개별 행을 스프레드시트에 추가
-                if sheets_manager.add_row_to_sheets(issue_data):
+                result = sheets_manager.add_row_to_sheets(issue_data)
+                print(f"Google Sheets 저장 결과: {result}")
+                
+                if result:
                     st.success("구글 스프레드시트에 저장되었습니다!")
                 else:
-                    st.warning("구글 스프레드시트 저장에 실패했습니다.")
+                    st.warning("구글 스프레드시트 저장에 실패했습니다. 로그를 확인하세요.")
             except Exception as e:
+                print(f"Google Sheets 저장 예외: {e}")
+                import traceback
+                traceback.print_exc()
                 st.warning(f"구글 스프레드시트 저장 실패: {e}")
+        else:
+            print("Google Sheets 서비스가 사용 불가능합니다.")
         
         return True
         

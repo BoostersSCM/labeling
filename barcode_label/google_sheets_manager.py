@@ -229,24 +229,34 @@ class GoogleSheetsManager:
     
     def add_row_to_sheets(self, row_data):
         """개별 행을 구글 스프레드시트에 추가"""
+        print(f"Google Sheets에 데이터 추가 시도: {row_data}")
+        
         if not self.authenticate():
+            print("Google Sheets 인증 실패")
             return False
         
         try:
             # 스프레드시트가 없으면 생성
             if not self.spreadsheet_id:
+                print("스프레드시트 ID가 없어서 새로 생성합니다.")
                 self.create_spreadsheet()
             
             if not self.spreadsheet_id:
+                print("스프레드시트 생성 실패")
                 return False
+            
+            print(f"스프레드시트 ID: {self.spreadsheet_id}")
             
             # 스프레드시트 열기
             spreadsheet = self.service.open_by_key(self.spreadsheet_id)
+            print("스프레드시트 열기 성공")
             
             # 시트 가져오기 (없으면 생성)
             try:
                 worksheet = spreadsheet.worksheet(self.sheet_name)
+                print(f"기존 시트 '{self.sheet_name}' 사용")
             except gspread.WorksheetNotFound:
+                print(f"시트 '{self.sheet_name}'가 없어서 새로 생성합니다.")
                 worksheet = spreadsheet.add_worksheet(title=self.sheet_name, rows=1000, cols=10)
                 # 헤더 추가 (지정된 컬럼 순서에 맞게)
                 headers = [
@@ -254,6 +264,7 @@ class GoogleSheetsManager:
                     '유통기한', '폐기일자', '보관위치', '버전', '발행일시'
                 ]
                 worksheet.append_row(headers)
+                print("헤더 추가 완료")
             
             # 데이터 행 추가 (지정된 컬럼 순서에 맞게)
             row_values = [
@@ -269,12 +280,15 @@ class GoogleSheetsManager:
                 row_data.get('발행일시', '')       # J열: 발행일시
             ]
             
+            print(f"추가할 데이터: {row_values}")
             worksheet.append_row(row_values)
             print(f"구글 스프레드시트에 새 행이 추가되었습니다.")
             return True
             
         except Exception as e:
             print(f"행 추가 오류: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def sync_with_sheets(self, excel_file_path, direction="upload"):
