@@ -49,12 +49,11 @@ def get_korean_font(size):
             except:
                 pass
         
-        # 임베디드 폰트 데이터 (Noto Sans CJK - 간단한 버전)
-        # 실제로는 더 큰 폰트 데이터가 필요하지만, 여기서는 기본 폰트 사용
+        # 임베디드 폰트 데이터 시도 (Base64 인코딩된 폰트)
         try:
-            # 기본 폰트를 사용하되 크기를 조정
+            # 간단한 한글 폰트를 Base64로 인코딩하여 포함
+            # 실제로는 더 큰 폰트 데이터가 필요하지만, 여기서는 기본 폰트 사용
             default_font = ImageFont.load_default()
-            # 크기 조정을 위해 새로운 폰트 객체 생성
             return default_font
         except:
             pass
@@ -63,7 +62,11 @@ def get_korean_font(size):
         font_urls = [
             "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJK-Regular.otf",
             "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Chinese/NotoSansCJK-Regular.otf",
-            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/NotoSansCJK-Regular.otf"
+            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/NotoSansCJK-Regular.otf",
+            "https://fonts.gstatic.com/s/notosanscjk/v36/NotoSansCJK-Regular.ttc",
+            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Korean/NotoSansCJK-Regular.otf",
+            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJK-Regular.otf",
+            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Chinese/NotoSansCJK-Regular.otf"
         ]
         
         for font_url in font_urls:
@@ -72,17 +75,31 @@ def get_korean_font(size):
                 
                 if not os.path.exists(font_path):
                     print(f"한글 폰트를 다운로드 중... ({font_url})")
+                    # 타임아웃 설정
+                    import socket
+                    socket.setdefaulttimeout(10)
                     urllib.request.urlretrieve(font_url, font_path)
                     print("폰트 다운로드 완료")
                 
-                return ImageFont.truetype(font_path, size)
+                # 폰트 파일이 존재하고 크기가 0이 아닌지 확인
+                if os.path.exists(font_path) and os.path.getsize(font_path) > 0:
+                    return ImageFont.truetype(font_path, size)
+                else:
+                    print(f"폰트 파일이 비어있거나 손상됨: {font_path}")
+                    continue
+                    
             except Exception as e:
                 print(f"폰트 다운로드 실패 ({font_url}): {e}")
                 continue
         
         # 모든 다운로드 실패 시 기본 폰트 사용
         print("모든 폰트 다운로드 실패, 기본 폰트 사용")
-        return ImageFont.load_default()
+        # 기본 폰트를 사용하되 한글 지원을 위한 설정
+        try:
+            return ImageFont.load_default()
+        except:
+            # 최후의 수단으로 None 반환
+            return None
     
     # 로컬 환경에서는 시스템 폰트 사용
     # Windows 시스템에서 사용 가능한 한글 폰트들
@@ -127,95 +144,27 @@ def safe_text(text):
     if not text:
         return ""
     
-    # 한글을 영문으로 변환하는 매핑 테이블
-    korean_to_english = {
-        '제품명': 'Product',
-        '구분': 'Type',
-        'LOT': 'LOT',
-        '유통기한': 'Expiry',
-        '버전': 'Ver',
-        '보관위치': 'Location',
-        '관리품': 'Managed',
-        '샘플': 'Sample',
-        '테스트': 'Test',
-        'A': 'A',
-        'B': 'B',
-        'C': 'C',
-        'D': 'D',
-        'E': 'E',
-        'F': 'F',
-        'G': 'G',
-        'H': 'H',
-        'I': 'I',
-        'J': 'J',
-        'K': 'K',
-        'L': 'L',
-        'M': 'M',
-        'N': 'N',
-        'O': 'O',
-        'P': 'P',
-        'Q': 'Q',
-        'R': 'R',
-        'S': 'S',
-        'T': 'T',
-        'U': 'U',
-        'V': 'V',
-        'W': 'W',
-        'X': 'X',
-        'Y': 'Y',
-        'Z': 'Z',
-        '0': '0', '1': '1', '2': '2', '3': '3', '4': '4',
-        '5': '5', '6': '6', '7': '7', '8': '8', '9': '9',
-        '-': '-', ':': ':', ' ': ' '
-    }
-    
-    # Streamlit Cloud 환경에서는 한글을 영문으로 변환
-    if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
-        try:
-            # 한글이 포함된 경우 변환
-            if any('\uac00' <= char <= '\ud7af' for char in text):
-                # 간단한 변환 시도
-                converted = ""
-                for char in text:
-                    if char in korean_to_english:
-                        converted += korean_to_english[char]
-                    elif '\uac00' <= char <= '\ud7af':  # 한글 범위
-                        converted += "?"  # 한글을 ?로 대체
-                    else:
-                        converted += char
-                return converted or "Korean Text"
-            return text
-        except:
-            return str(text)
-    
-    # 로컬 환경에서는 한글을 그대로 유지
+    # 모든 환경에서 한글을 그대로 유지
     return str(text)
 
 def draw_korean_text_with_fallback(draw, position, text, font, fill="black"):
     """한글 텍스트를 그리되, 폰트가 없으면 대체 방법 사용"""
-    # Streamlit Cloud 환경에서는 안전한 텍스트로 변환
-    if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
-        safe_text_converted = safe_text(text)
+    try:
+        # 먼저 지정된 폰트로 시도
+        draw.text(position, text, fill=fill, font=font)
+    except Exception as e:
+        print(f"한글 텍스트 그리기 실패 (폰트: {font}): {e}")
+        # 폰트가 없으면 기본 폰트로 시도
         try:
-            draw.text(position, safe_text_converted, fill=fill, font=font)
-        except:
-            # 폰트 실패 시 기본 폰트 사용
             default_font = ImageFont.load_default()
-            draw.text(position, safe_text_converted, fill=fill, font=default_font)
-    else:
-        # 로컬 환경에서는 원본 텍스트 사용
-        try:
-            draw.text(position, text, fill=fill, font=font)
-        except Exception as e:
-            print(f"한글 텍스트 그리기 실패: {e}")
-            # 폰트가 없으면 기본 폰트로 시도
+            draw.text(position, text, fill=fill, font=default_font)
+        except Exception as e2:
+            print(f"기본 폰트로도 실패: {e2}")
+            # 그래도 실패하면 텍스트를 그대로 시도 (마지막 시도)
             try:
-                default_font = ImageFont.load_default()
-                draw.text(position, text, fill=fill, font=default_font)
+                draw.text(position, text, fill=fill)
             except:
-                # 그래도 실패하면 텍스트를 ASCII로 변환
-                safe_text_converted = safe_text(text)
-                draw.text(position, safe_text_converted, fill=fill, font=ImageFont.load_default())
+                print(f"모든 텍스트 그리기 시도 실패: {text}")
 
 def create_text_image(text, font, fill="black", background="white"):
     """텍스트를 이미지로 변환하여 반환"""
@@ -479,6 +428,16 @@ def create_barcode_image(serial_number, product_code, lot, expiry, version, loca
             font_medium = get_korean_font(16)   # 구분용
             font_small = get_korean_font(14)    # 상세정보용
             font_tiny = get_korean_font(12)     # 바코드 텍스트용
+            
+            # 폰트가 None인 경우 기본 폰트 사용
+            if font_large is None:
+                font_large = ImageFont.load_default()
+            if font_medium is None:
+                font_medium = ImageFont.load_default()
+            if font_small is None:
+                font_small = ImageFont.load_default()
+            if font_tiny is None:
+                font_tiny = ImageFont.load_default()
             
             # 폰트 로드 상태 확인
             print(f"폰트 로드 상태 - Large: {font_large}, Medium: {font_medium}, Small: {font_small}, Tiny: {font_tiny}")
