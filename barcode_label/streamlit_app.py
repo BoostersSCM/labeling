@@ -34,7 +34,37 @@ pd.set_option('display.encoding', 'utf-8')
 def get_korean_font(size):
     """한글을 지원하는 폰트를 찾아서 반환"""
     import platform
+    import urllib.request
+    import tempfile
     
+    # Streamlit Cloud 환경에서는 웹 폰트 사용
+    if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
+        # 먼저 프로젝트 내 폰트 파일 확인
+        local_font_path = os.path.join(current_dir, "fonts", "NotoSansCJK-Regular.ttf")
+        if os.path.exists(local_font_path):
+            try:
+                return ImageFont.truetype(local_font_path, size)
+            except:
+                pass
+        
+        # 웹에서 폰트 다운로드 시도
+        try:
+            # Noto Sans CJK 폰트 다운로드 (한글 지원)
+            font_url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Korean/NotoSansCJK-Regular.otf"
+            font_path = os.path.join(tempfile.gettempdir(), "NotoSansCJK-Regular.otf")
+            
+            if not os.path.exists(font_path):
+                print("한글 폰트를 다운로드 중...")
+                urllib.request.urlretrieve(font_url, font_path)
+                print("폰트 다운로드 완료")
+            
+            return ImageFont.truetype(font_path, size)
+        except Exception as e:
+            print(f"웹 폰트 다운로드 실패: {e}")
+            # 기본 폰트 사용하되, 한글 텍스트를 ASCII로 변환
+            return ImageFont.load_default()
+    
+    # 로컬 환경에서는 시스템 폰트 사용
     # Windows 시스템에서 사용 가능한 한글 폰트들
     korean_fonts = [
         "malgun.ttf",      # 맑은 고딕
@@ -72,6 +102,42 @@ def get_korean_font(size):
     # 한글 폰트를 찾지 못한 경우 기본 폰트 사용
     return ImageFont.load_default()
 
+def safe_text(text):
+    """한글 텍스트를 안전하게 처리"""
+    if not text:
+        return ""
+    
+    # 기본 폰트를 사용하는 경우 한글을 ASCII로 변환
+    try:
+        # 한글이 포함된 경우 간단한 변환
+        if any('\uac00' <= char <= '\ud7af' for char in text):
+            # 한글을 영문으로 변환하거나 제거
+            return text.encode('ascii', 'ignore').decode('ascii') or "Korean Text"
+        return text
+    except:
+        return str(text)
+
+def get_mysql_connection():
+    """MySQL 연결 반환"""
+    if not MYSQL_AVAILABLE or not mysql_config:
+        return None
+    
+    try:
+        import pymysql
+        connection = pymysql.connect(
+            host=mysql_config['host'],
+            user=mysql_config['user'],
+            password=mysql_config['password'],
+            database=mysql_config['database'],
+            port=mysql_config['port'],
+            charset='utf8mb4',
+            cursorclass=pymysql.cursors.DictCursor
+        )
+        return connection
+    except Exception as e:
+        print(f"MySQL 연결 실패: {e}")
+        return None
+
 # 현재 디렉토리를 Python 경로에 추가
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
@@ -83,6 +149,28 @@ try:
 except ImportError as e:
     GOOGLE_SERVICES_AVAILABLE = False
     st.warning(f"구글 스프레드시트 연동 모듈을 불러올 수 없습니다: {e}")
+
+# MySQL 연결 설정
+MYSQL_AVAILABLE = False
+mysql_config = None
+
+try:
+    # Streamlit secrets에서 MySQL 설정 가져오기
+    if 'mysql' in st.secrets:
+        mysql_config = {
+            'host': st.secrets['mysql']['host'],
+            'user': st.secrets['mysql']['user'],
+            'password': st.secrets['mysql']['password'],
+            'database': st.secrets['mysql']['database'],
+            'port': st.secrets['mysql'].get('port', 3306)
+        }
+        MYSQL_AVAILABLE = True
+        print("MySQL 설정이 로드되었습니다.")
+    else:
+        print("MySQL 설정이 없습니다. secrets.toml 파일을 확인하세요.")
+except Exception as e:
+    print(f"MySQL 설정 로드 실패: {e}")
+    MYSQL_AVAILABLE = False
 
 # 페이지 설정
 st.set_page_config(
@@ -235,6 +323,13 @@ def create_barcode_image(serial_number, product_code, lot, expiry, version, loca
     try:
         # 제품명 조회
         product_name = st.session_state.products.get(product_code, "Unknown Product")
+        # 한글 텍스트 안전 처리
+        safe_product_name = safe_text(product_name)
+        safe_category = safe_text(category)
+        safe_lot = safe_text(lot)
+        safe_expiry = safe_text(expiry)
+        safe_version = safe_text(version)
+        safe_location = safe_text(location)
         
         # 바코드 생성
         barcode_class = barcode.get_barcode_class('code128')
@@ -307,21 +402,21 @@ def create_barcode_image(serial_number, product_code, lot, expiry, version, loca
         margin = 15
         
         # 제품명 (여러 줄 지원, 최대 2줄)
-        product_text = f"제품명: {product_name}"
+        product_text = f"제품명: {safe_product_name}"
         y_pos = draw_multiline_text(draw, product_text, (margin, y_pos), font_large, LABEL_WIDTH - 2*margin, max_lines=2)
         y_pos += 20
         
         # 구분
-        draw.text((margin, y_pos), f"구분: {category}", fill="black", font=font_medium)
+        draw.text((margin, y_pos), f"구분: {safe_category}", fill="black", font=font_medium)
         y_pos += 20
         
         # LOT, 유통기한, 버전 (한 줄에 압축)
-        lot_expiry_version_text = f"LOT: {lot}    유통기한: {expiry}    버전: {version}"
+        lot_expiry_version_text = f"LOT: {safe_lot}    유통기한: {safe_expiry}    버전: {safe_version}"
         draw.text((margin, y_pos), lot_expiry_version_text, fill="black", font=font_small)
         y_pos += 20
         
         # 보관위치
-        draw.text((margin, y_pos), f"보관위치: {location}", fill="black", font=font_small)
+        draw.text((margin, y_pos), f"보관위치: {safe_location}", fill="black", font=font_small)
         
         # 바코드 이미지 리사이즈 및 배치 (하단에 고정)
         barcode_height = 100
@@ -796,6 +891,8 @@ def show_settings_page():
     with col2:
         st.info(f"""
         **구글 스프레드시트**: {'✅ 사용 가능' if GOOGLE_SERVICES_AVAILABLE else '❌ 사용 불가'}
+        
+        **MySQL 데이터베이스**: {'✅ 사용 가능' if MYSQL_AVAILABLE else '❌ 사용 불가'}
         
         **현재 일련번호**: {get_next_serial_number() - 1}
         """)
