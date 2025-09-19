@@ -73,64 +73,60 @@ class GoogleSheetsManager:
         except Exception as e:
             print(f"설정 저장 오류: {e}")
     
+    # google_sheets_manager.py 파일에서 아래 함수를 통째로 바꿔주세요.
+
     def authenticate(self):
-        """구글 API 인증"""
+        """구글 API 인증 (Streamlit Cloud 최적화)"""
         creds = None
-        
-        # Streamlit Cloud 환경에서는 Streamlit secrets 사용
-        if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
+        # Streamlit Cloud 환경인지 명확하게 확인
+        is_streamlit_cloud = os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False)
+
+        # 1. Streamlit Cloud 환경일 경우: st.secrets 사용
+        if is_streamlit_cloud:
+            print("Streamlit Cloud 환경 감지. st.secrets를 사용하여 인증합니다.")
             try:
-                # Streamlit secrets에서 Google Sheets 설정 가져오기
                 import streamlit as st
-                if 'google_sheets' in st.secrets:
-                    service_account_data = st.secrets['google_sheets']
-                    creds = Credentials.from_service_account_info(
-                        service_account_data, scopes=self.scopes
-                    )
-                    print("Streamlit secrets로 서비스 계정 인증되었습니다.")
-                else:
-                    print("Google Sheets 설정이 secrets.toml에 없습니다.")
+                # secrets에 [google_sheets] 섹션이 있는지 확인
+                if 'google_sheets' not in st.secrets:
+                    print("오류: Streamlit secrets에 [google_sheets] 섹션이 없습니다.")
                     return False
-            except Exception as e:
-                print(f"Streamlit secrets 인증 실패: {e}")
-                return False
-        else:
-            # 로컬 환경에서는 파일 기반 인증
-            # 토큰 파일이 있으면 로드
-            if os.path.exists(self.token_file):
-                with open(self.token_file, 'rb') as token:
-                    creds = pickle.load(token)
-            
-            # 유효한 인증 정보가 없거나 만료된 경우
-            if not creds or not creds.valid:
-                if creds and creds.expired and creds.refresh_token:
-                    creds.refresh(Request())
-                else:
-                    # 서비스 계정 키 파일이 있으면 사용 (client_secrets.json이 서비스 계정 키인 경우)
-                    client_secrets_file = os.path.join(self.script_dir, 'client_secrets.json')
-                    if os.path.exists(client_secrets_file):
-                        try:
-                            # 서비스 계정 키로 인증 시도
-                            creds = Credentials.from_service_account_file(
-                                client_secrets_file, scopes=self.scopes
-                            )
-                            print("서비스 계정 키로 인증되었습니다.")
-                        except Exception as e:
-                            print(f"서비스 계정 키 인증 실패: {e}")
-                            return False
-                    else:
-                        print(f"client_secrets.json 파일을 찾을 수 없습니다: {client_secrets_file}")
-                        return False
                 
-                # 토큰 저장
-                with open(self.token_file, 'wb') as token:
-                    pickle.dump(creds, token)
+                service_account_info = st.secrets['google_sheets']
+                creds = Credentials.from_service_account_info(
+                    service_account_info, scopes=self.scopes
+                )
+                print("Streamlit secrets로 서비스 계정 인증 성공.")
+            except Exception as e:
+                print(f"Streamlit secrets 인증 중 예외 발생: {e}")
+                import traceback
+                traceback.print_exc()
+                return False
         
+        # 2. 로컬 환경일 경우: 파일 기반 인증
+        else:
+            print("로컬 환경 감지. 서비스 계정 파일(client_secrets.json)을 사용하여 인증합니다.")
+            service_account_file = os.path.join(self.script_dir, 'client_secrets.json')
+            
+            if not os.path.exists(service_account_file):
+                print(f"오류: {service_account_file} 파일을 찾을 수 없습니다.")
+                return False
+            
+            try:
+                creds = Credentials.from_service_account_file(
+                    service_account_file, scopes=self.scopes
+                )
+                print("서비스 계정 파일로 인증 성공.")
+            except Exception as e:
+                print(f"서비스 계정 파일 인증 실패: {e}")
+                return False
+        
+        # 3. gspread 클라이언트 최종 인증
         try:
             self.service = gspread.authorize(creds)
+            print("gspread 클라이언트 인증 성공.")
             return True
         except Exception as e:
-            print(f"인증 오류: {e}")
+            print(f"gspread 클라이언트 인증 오류: {e}")
             return False
     
     def create_spreadsheet(self, title="바코드 라벨 발행이력"):
