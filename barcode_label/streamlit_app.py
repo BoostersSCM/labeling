@@ -36,6 +36,7 @@ def get_korean_font(size):
     import platform
     import urllib.request
     import tempfile
+    import base64
     
     # Streamlit Cloud 환경에서는 웹 폰트 사용
     if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
@@ -47,22 +48,31 @@ def get_korean_font(size):
             except:
                 pass
         
-        # 웹에서 폰트 다운로드 시도
-        try:
-            # Noto Sans CJK 폰트 다운로드 (한글 지원)
-            font_url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Korean/NotoSansCJK-Regular.otf"
-            font_path = os.path.join(tempfile.gettempdir(), "NotoSansCJK-Regular.otf")
-            
-            if not os.path.exists(font_path):
-                print("한글 폰트를 다운로드 중...")
-                urllib.request.urlretrieve(font_url, font_path)
-                print("폰트 다운로드 완료")
-            
-            return ImageFont.truetype(font_path, size)
-        except Exception as e:
-            print(f"웹 폰트 다운로드 실패: {e}")
-            # 기본 폰트 사용하되, 한글 텍스트를 ASCII로 변환
-            return ImageFont.load_default()
+        # 웹에서 폰트 다운로드 시도 (여러 URL 시도)
+        font_urls = [
+            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJK-Regular.otf",
+            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Chinese/NotoSansCJK-Regular.otf",
+            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/NotoSansCJK-Regular.otf",
+            "https://fonts.gstatic.com/s/notosanscjk/v36/NotoSansCJK-Regular.ttc"
+        ]
+        
+        for font_url in font_urls:
+            try:
+                font_path = os.path.join(tempfile.gettempdir(), f"NotoSansCJK-Regular-{hash(font_url)}.otf")
+                
+                if not os.path.exists(font_path):
+                    print(f"한글 폰트를 다운로드 중... ({font_url})")
+                    urllib.request.urlretrieve(font_url, font_path)
+                    print("폰트 다운로드 완료")
+                
+                return ImageFont.truetype(font_path, size)
+            except Exception as e:
+                print(f"폰트 다운로드 실패 ({font_url}): {e}")
+                continue
+        
+        # 모든 다운로드 실패 시 기본 폰트 사용
+        print("모든 폰트 다운로드 실패, 기본 폰트 사용")
+        return ImageFont.load_default()
     
     # 로컬 환경에서는 시스템 폰트 사용
     # Windows 시스템에서 사용 가능한 한글 폰트들
@@ -107,7 +117,11 @@ def safe_text(text):
     if not text:
         return ""
     
-    # 기본 폰트를 사용하는 경우 한글을 ASCII로 변환
+    # Streamlit Cloud 환경에서는 한글을 그대로 유지
+    if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
+        return str(text)
+    
+    # 로컬 환경에서 기본 폰트를 사용하는 경우에만 변환
     try:
         # 한글이 포함된 경우 간단한 변환
         if any('\uac00' <= char <= '\ud7af' for char in text):
@@ -116,6 +130,21 @@ def safe_text(text):
         return text
     except:
         return str(text)
+
+def draw_korean_text_with_fallback(draw, position, text, font, fill="black"):
+    """한글 텍스트를 그리되, 폰트가 없으면 대체 방법 사용"""
+    try:
+        draw.text(position, text, fill=fill, font=font)
+    except Exception as e:
+        print(f"한글 텍스트 그리기 실패: {e}")
+        # 폰트가 없으면 기본 폰트로 시도
+        try:
+            default_font = ImageFont.load_default()
+            draw.text(position, text, fill=fill, font=default_font)
+        except:
+            # 그래도 실패하면 텍스트를 ASCII로 변환
+            safe_text_converted = safe_text(text)
+            draw.text(position, safe_text_converted, fill=fill, font=ImageFont.load_default())
 
 def get_mysql_connection():
     """MySQL 연결 반환"""
@@ -345,10 +374,21 @@ def create_barcode_image(serial_number, product_code, lot, expiry, version, loca
         draw = ImageDraw.Draw(label)
         
         # 한글 폰트 설정 (30x20 라벨에 맞는 크기)
-        font_large = get_korean_font(20)    # 제품명용
-        font_medium = get_korean_font(16)   # 구분용
-        font_small = get_korean_font(14)    # 상세정보용
-        font_tiny = get_korean_font(12)     # 바코드 텍스트용
+        try:
+            font_large = get_korean_font(20)    # 제품명용
+            font_medium = get_korean_font(16)   # 구분용
+            font_small = get_korean_font(14)    # 상세정보용
+            font_tiny = get_korean_font(12)     # 바코드 텍스트용
+            
+            # 폰트 로드 상태 확인
+            print(f"폰트 로드 상태 - Large: {font_large}, Medium: {font_medium}, Small: {font_small}, Tiny: {font_tiny}")
+        except Exception as e:
+            print(f"폰트 로드 오류: {e}")
+            # 기본 폰트 사용
+            font_large = ImageFont.load_default()
+            font_medium = ImageFont.load_default()
+            font_small = ImageFont.load_default()
+            font_tiny = ImageFont.load_default()
         
         # 폰트 로드 상태 확인 (디버그용)
         if hasattr(font_large, 'path'):
@@ -392,7 +432,7 @@ def create_barcode_image(serial_number, product_code, lot, expiry, version, loca
                 lines.append("...")  # 잘린 부분 표시
             
             for line in lines:
-                draw.text((x, y), line, fill=fill, font=font)
+                draw_korean_text_with_fallback(draw, (x, y), line, font, fill)
                 y += font.size + 2
             
             return y
@@ -407,16 +447,16 @@ def create_barcode_image(serial_number, product_code, lot, expiry, version, loca
         y_pos += 20
         
         # 구분
-        draw.text((margin, y_pos), f"구분: {safe_category}", fill="black", font=font_medium)
+        draw_korean_text_with_fallback(draw, (margin, y_pos), f"구분: {safe_category}", font_medium)
         y_pos += 20
         
         # LOT, 유통기한, 버전 (한 줄에 압축)
         lot_expiry_version_text = f"LOT: {safe_lot}    유통기한: {safe_expiry}    버전: {safe_version}"
-        draw.text((margin, y_pos), lot_expiry_version_text, fill="black", font=font_small)
+        draw_korean_text_with_fallback(draw, (margin, y_pos), lot_expiry_version_text, font_small)
         y_pos += 20
         
         # 보관위치
-        draw.text((margin, y_pos), f"보관위치: {safe_location}", fill="black", font=font_small)
+        draw_korean_text_with_fallback(draw, (margin, y_pos), f"보관위치: {safe_location}", font_small)
         
         # 바코드 이미지 리사이즈 및 배치 (하단에 고정)
         barcode_height = 100
