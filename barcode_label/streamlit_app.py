@@ -967,13 +967,19 @@ def show_settings_page():
         
         if st.button("☁️ 구글 스프레드시트 설정", use_container_width=True):
             try:
-                # 새 스프레드시트 생성
-                result = sheets_manager.setup_initial_config('new')
-                if result:
-                    st.success("구글 스프레드시트 설정이 완료되었습니다!")
-                    st.info("새 스프레드시트가 생성되었습니다. 서비스 계정 이메일을 스프레드시트에 공유하세요.")
+                # 기존 스프레드시트 연결 테스트
+                if sheets_manager.authenticate():
+                    st.success("구글 스프레드시트 연결이 성공했습니다!")
+                    
+                    # 현재 설정된 스프레드시트 정보 표시
+                    if sheets_manager.spreadsheet_id:
+                        st.info(f"연결된 스프레드시트 ID: {sheets_manager.spreadsheet_id}")
+                        st.info(f"스프레드시트 URL: {sheets_manager.get_spreadsheet_url()}")
+                    else:
+                        st.warning("스프레드시트 ID가 설정되지 않았습니다. secrets.toml에서 설정하세요.")
                 else:
-                    st.error("구글 스프레드시트 설정에 실패했습니다.")
+                    st.error("구글 스프레드시트 인증에 실패했습니다.")
+                    st.info("secrets.toml 파일에 Google Sheets 설정이 올바른지 확인하세요.")
             except Exception as e:
                 st.error(f"설정 오류: {e}")
                 import traceback

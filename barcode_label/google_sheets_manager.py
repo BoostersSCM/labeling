@@ -38,11 +38,26 @@ class GoogleSheetsManager:
     def load_config(self):
         """구글 스프레드시트 설정 로드"""
         try:
+            # Streamlit Cloud 환경에서는 secrets에서 설정 로드
+            if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
+                try:
+                    import streamlit as st
+                    if 'google_sheets' in st.secrets:
+                        sheets_config = st.secrets['google_sheets']
+                        self.spreadsheet_id = sheets_config.get('spreadsheet_id')
+                        self.sheet_name = sheets_config.get('sheet_name', '발행이력')
+                        print(f"Streamlit secrets에서 설정 로드: {self.spreadsheet_id}")
+                        return
+                except Exception as e:
+                    print(f"Streamlit secrets 로드 실패: {e}")
+            
+            # 로컬 환경에서는 파일에서 설정 로드
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                     self.spreadsheet_id = config.get('spreadsheet_id')
                     self.sheet_name = config.get('sheet_name', '발행이력')
+                    print(f"로컬 설정 파일에서 로드: {self.spreadsheet_id}")
         except Exception as e:
             print(f"설정 로드 오류: {e}")
     
