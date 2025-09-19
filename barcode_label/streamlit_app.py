@@ -74,15 +74,15 @@ def get_korean_font(size):
 
 # 현재 디렉토리를 Python 경로에 추가
 current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
+sys.path.insert(0, current_dir)
 
 # 기존 모듈들 import
 try:
     from google_sheets_manager import sheets_manager
     GOOGLE_SERVICES_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     GOOGLE_SERVICES_AVAILABLE = False
-    st.warning("구글 스프레드시트 연동 모듈을 불러올 수 없습니다.")
+    st.warning(f"구글 스프레드시트 연동 모듈을 불러올 수 없습니다: {e}")
 
 # 페이지 설정
 st.set_page_config(

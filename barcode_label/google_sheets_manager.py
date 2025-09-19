@@ -14,8 +14,6 @@ from google.oauth2.service_account import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 import pickle
-import tkinter as tk
-from tkinter import messagebox, simpledialog
 
 class GoogleSheetsManager:
     def __init__(self):
@@ -269,76 +267,52 @@ class GoogleSheetsManager:
         else:
             return False
     
-    def setup_initial_config(self):
-        """초기 설정 (GUI)"""
-        root = tk.Tk()
-        root.withdraw()  # 메인 창 숨기기
+    def setup_initial_config(self, spreadsheet_id=None):
+        """초기 설정 (Streamlit 환경용)"""
+        if not spreadsheet_id:
+            print("구글 스프레드시트 ID가 제공되지 않았습니다.")
+            return False
         
-        # 스프레드시트 ID 입력
-        spreadsheet_id = simpledialog.askstring(
-            "구글 스프레드시트 설정",
-            "구글 스프레드시트 ID를 입력하세요:\n\n"
-            "1. 새 스프레드시트를 생성하려면 'new'를 입력하세요\n"
-            "2. 기존 스프레드시트를 사용하려면 ID를 입력하세요\n\n"
-            "스프레드시트 URL: https://docs.google.com/spreadsheets/d/SPREADSHEET_ID\n\n"
-            "⚠️ 중요: 서비스 계정 이메일을 스프레드시트에 공유해야 합니다!",
-            parent=root
-        )
-        
-        if spreadsheet_id:
-            if spreadsheet_id.lower() == 'new':
-                # 새 스프레드시트 생성
-                new_id = self.create_spreadsheet()
-                if new_id:
-                    # 서비스 계정 이메일 정보 표시
-                    service_account_email = self._get_service_account_email()
-                    messagebox.showinfo(
-                        "스프레드시트 생성 완료",
-                        f"새 구글 스프레드시트가 생성되었습니다.\n\n"
-                        f"스프레드시트 ID: {new_id}\n"
-                        f"URL: {self.get_spreadsheet_url()}\n\n"
-                        f"⚠️ 다음 이메일을 스프레드시트에 공유하세요:\n"
-                        f"{service_account_email}\n\n"
-                        f"권한: 편집자"
-                    )
+        if spreadsheet_id.lower() == 'new':
+            # 새 스프레드시트 생성
+            new_id = self.create_spreadsheet()
+            if new_id:
+                # 서비스 계정 이메일 정보 표시
+                service_account_email = self._get_service_account_email()
+                print(f"새 구글 스프레드시트가 생성되었습니다.")
+                print(f"스프레드시트 ID: {new_id}")
+                print(f"URL: {self.get_spreadsheet_url()}")
+                print(f"⚠️ 다음 이메일을 스프레드시트에 공유하세요: {service_account_email}")
+                print(f"권한: 편집자")
+                return True
+            else:
+                print("스프레드시트 생성에 실패했습니다.")
+                return False
+        else:
+            # 기존 스프레드시트 사용
+            self.spreadsheet_id = spreadsheet_id
+            self.save_config()
+            
+            # 연결 테스트
+            if self.authenticate():
+                try:
+                    spreadsheet = self.service.open_by_key(self.spreadsheet_id)
+                    print(f"구글 스프레드시트에 연결되었습니다.")
+                    print(f"스프레드시트 ID: {self.spreadsheet_id}")
+                    print(f"URL: {self.get_spreadsheet_url()}")
                     return True
-                else:
-                    messagebox.showerror("오류", "스프레드시트 생성에 실패했습니다.")
+                except Exception as e:
+                    # 서비스 계정 이메일 정보와 함께 오류 메시지 표시
+                    service_account_email = self._get_service_account_email()
+                    print(f"스프레드시트에 연결할 수 없습니다: {e}")
+                    print(f"⚠️ 해결 방법:")
+                    print(f"1. 스프레드시트 ID가 올바른지 확인")
+                    print(f"2. 다음 이메일을 스프레드시트에 공유하세요: {service_account_email}")
+                    print(f"3. 권한: 편집자로 설정")
                     return False
             else:
-                # 기존 스프레드시트 사용
-                self.spreadsheet_id = spreadsheet_id
-                self.save_config()
-                
-                # 연결 테스트
-                if self.authenticate():
-                    try:
-                        spreadsheet = self.service.open_by_key(self.spreadsheet_id)
-                        messagebox.showinfo(
-                            "연결 성공",
-                            f"구글 스프레드시트에 연결되었습니다.\n\n"
-                            f"스프레드시트 ID: {self.spreadsheet_id}\n"
-                            f"URL: {self.get_spreadsheet_url()}"
-                        )
-                        return True
-                    except Exception as e:
-                        # 서비스 계정 이메일 정보와 함께 오류 메시지 표시
-                        service_account_email = self._get_service_account_email()
-                        messagebox.showerror(
-                            "연결 실패", 
-                            f"스프레드시트에 연결할 수 없습니다: {e}\n\n"
-                            f"⚠️ 해결 방법:\n"
-                            f"1. 스프레드시트 ID가 올바른지 확인\n"
-                            f"2. 다음 이메일을 스프레드시트에 공유하세요:\n"
-                            f"   {service_account_email}\n"
-                            f"3. 권한: 편집자로 설정"
-                        )
-                        return False
-                else:
-                    messagebox.showerror("인증 실패", "구글 API 인증에 실패했습니다.")
-                    return False
-        
-        return False
+                print("구글 API 인증에 실패했습니다.")
+                return False
     
     def _get_service_account_email(self):
         """서비스 계정 이메일 가져오기"""
