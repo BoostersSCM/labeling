@@ -21,18 +21,55 @@ import json
 import sqlite3
 import csv
 
+# 구글 스프레드시트 연동 모듈 import
+try:
+    from google_sheets_manager import sheets_manager
+    import gspread
+    GOOGLE_SHEETS_AVAILABLE = True
+except ImportError:
+    GOOGLE_SHEETS_AVAILABLE = False
+    print("구글 스프레드시트 연동 모듈을 불러올 수 없습니다.")
+
+# 구글 드라이브 연동 모듈 import
+try:
+    from google_drive_manager import drive_manager
+    GOOGLE_DRIVE_AVAILABLE = True
+except ImportError:
+    GOOGLE_DRIVE_AVAILABLE = False
+    print("구글 드라이브 연동 모듈을 불러올 수 없습니다.")
+
+# 스크립트 디렉토리 설정
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+
 # 상위 디렉토리의 execute_query.py 임포트
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from execute_query import call_query
-from mysql_auth import boosta_boosters
-from boosters_query import q_boosters_items_for_barcode_reader, q_boosters_items_limit_date
+sys.path.append(PROJECT_ROOT)
+try:
+    from execute_query import call_query
+    from mysql_auth import boosta_boosters
+    from boosters_query import q_boosters_items_for_barcode_reader, q_boosters_items_limit_date
+except ImportError as e:
+    print(f"모듈 임포트 오류: {e}")
+    print(f"스크립트 디렉토리: {SCRIPT_DIR}")
+    print(f"프로젝트 루트: {PROJECT_ROOT}")
+    print(f"Python 경로: {sys.path}")
+    # 기본값 설정
+    call_query = None
+    boosta_boosters = None
+    q_boosters_items_for_barcode_reader = None
+    q_boosters_items_limit_date = None
 
 
 # ✅ CSV/엑셀에서 제품 리스트 불러오기
 def load_products():
     try:
-        df = call_query(q_boosters_items_for_barcode_reader.query,boosta_boosters)
-        df_limit_date = call_query(q_boosters_items_limit_date.query,boosta_boosters)
+        # 모듈이 제대로 임포트되었는지 확인
+        if call_query is None or boosta_boosters is None:
+            print("데이터베이스 모듈을 임포트할 수 없습니다. 기본 데이터를 사용합니다.")
+            return {"TEST001": "테스트 제품"}, {}, {}
+        
+        df = call_query(q_boosters_items_for_barcode_reader.query, boosta_boosters)
+        df_limit_date = call_query(q_boosters_items_limit_date.query, boosta_boosters)
         df = pd.merge(df, df_limit_date, on='제품코드', how='left')
         products_dict = dict(zip(df['제품코드'].astype(str), df['제품명']))
         
@@ -57,89 +94,19 @@ def load_products():
                     'unit': expiry_unit
                 }
         
+        print(f"제품 데이터 로드 성공: {len(products_dict)}개 제품")
         return products_dict, barcode_dict, expiry_info_dict
     except Exception as e:
         print(f"데이터베이스 연결 실패: {e}")
+        print(f"현재 작업 디렉토리: {os.getcwd()}")
+        print(f"스크립트 디렉토리: {SCRIPT_DIR}")
         # 기본 데이터 반환
         return {"TEST001": "테스트 제품"}, {}, {}
 
 # products, barcode_to_product = load_products("barcode_label/products.xlsx")  # 올바른 경로
 products, barcode_to_product, expiry_info = load_products()
 
-# 바코드 히스토리 CSV 파일 관리
-def init_barcode_history_csv():
-    """바코드 히스토리 CSV 파일 초기화"""
-    csv_file = "barcode_history.csv"
-    if not os.path.exists(csv_file):
-        # CSV 파일이 없으면 헤더와 함께 생성
-        headers = [
-            '생성된바코드숫자', '구분', '제품코드', '제품명', 'LOT', 
-            '유통기한', '폐기일자', '보관위치', '발행일시'
-        ]
-        with open(csv_file, 'w', newline='', encoding='utf-8-sig') as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
-        print(f"바코드 히스토리 CSV 파일 생성: {csv_file}")
-
-def save_barcode_to_history(barcode_number, category, product_code, product_name, lot, expiry, location):
-    """바코드 정보를 히스토리 CSV 파일에 저장"""
-    try:
-        csv_file = "barcode_history.csv"
-        
-        # CSV 파일이 없으면 초기화
-        if not os.path.exists(csv_file):
-            init_barcode_history_csv()
-        
-        # 폐기일자 계산 (유통기한 + 1년)
-        disposal_date = "N/A"
-        if expiry and expiry != "N/A":
-            try:
-                expiry_date = pd.to_datetime(expiry)
-                disposal_date = expiry_date.replace(year=expiry_date.year + 1)
-                disposal_date = disposal_date.strftime("%Y-%m-%d")
-            except:
-                disposal_date = "N/A"
-        
-        # 현재 시간
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # CSV 파일에 데이터 추가
-        with open(csv_file, 'a', newline='', encoding='utf-8-sig') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                barcode_number,      # 생성된 바코드 숫자
-                category,            # 관리품/샘플재고 구분
-                product_code,        # 제품코드
-                product_name,        # 제품명
-                lot,                 # LOT
-                expiry,              # 유통기한
-                disposal_date,       # 폐기일자
-                location,            # 보관위치
-                current_time         # 발행일시
-            ])
-        
-        print(f"바코드 히스토리 저장 완료: {barcode_number} - {product_code}")
-        return True
-        
-    except Exception as e:
-        print(f"바코드 히스토리 저장 실패: {e}")
-        return False
-
-def get_barcode_history():
-    """바코드 히스토리 CSV 파일에서 데이터 읽기"""
-    try:
-        csv_file = "barcode_history.csv"
-        if os.path.exists(csv_file):
-            df = pd.read_csv(csv_file, encoding='utf-8-sig')
-            return df
-        else:
-            return pd.DataFrame()
-    except Exception as e:
-        print(f"바코드 히스토리 읽기 실패: {e}")
-        return pd.DataFrame()
-
-# CSV 파일 초기화
-init_barcode_history_csv()
+# 바코드 히스토리 관련 함수들 제거 (발행 내역 조회 및 관리로 통합)
 
 def view_barcode_history():
     """바코드 히스토리 확인 창"""
@@ -335,17 +302,58 @@ def view_barcode_history():
         
     except Exception as e:
         messagebox.showerror("오류", f"바코드 히스토리를 불러올 수 없습니다: {e}")  
-# 보관위치 검증 함수
+# 보관위치 검증 함수 (구역 설정 기반)
 def validate_location(location):
     """
-    보관위치 형식 검증: 알파벳(A,B) + 숫자2자리(01~05) + 숫자2자리(01~03)
-    예: A-01-01, B-03-02
+    보관위치 형식 검증: 구역 설정 파일 기반으로 동적 검증
+    예: A-01-01, B-03-02, C-01-01, D-01-01 등
     """
-    pattern = r'^[AB]-(0[1-5])-(0[1-3])$'
-    if not re.match(pattern, location):
-        return False, "보관위치 형식이 올바르지 않습니다.\n\n형식: 알파벳(A,B) + 숫자2자리(01~05) + 숫자2자리(01~03)\n예시: A-01-01, B-03-02"
-    
-    return True, ""
+    try:
+        # 구역 설정 로드
+        zone_config_file = os.path.join(SCRIPT_DIR, "zone_config.json")
+        if os.path.exists(zone_config_file):
+            with open(zone_config_file, 'r', encoding='utf-8') as f:
+                zone_config = json.load(f)
+            
+            # 입력된 위치 파싱
+            match = re.match(r'^([A-Z])-(\d{2})-(\d{2})$', location)
+            if not match:
+                return False, "보관위치 형식이 올바르지 않습니다.\n\n형식: 알파벳(구역코드) + 숫자2자리(행) + 숫자2자리(열)\n예시: A-01-01, B-03-02, C-01-01"
+            
+            zone_code, row_str, col_str = match.groups()
+            row = int(row_str)
+            col = int(col_str)
+            
+            # 구역이 존재하는지 확인
+            if zone_code not in zone_config.get('zones', {}):
+                return False, f"존재하지 않는 구역입니다: {zone_code}\n\n사용 가능한 구역: {', '.join(zone_config.get('zones', {}).keys())}"
+            
+            # 행과 열 범위 확인
+            zone_data = zone_config['zones'][zone_code]
+            max_rows = zone_data.get('sections', {}).get('rows', 5)
+            max_cols = zone_data.get('sections', {}).get('columns', 3)
+            
+            if row < 1 or row > max_rows:
+                return False, f"행 번호가 범위를 벗어났습니다: {row}\n\n구역 {zone_code}의 행 범위: 01~{max_rows:02d}"
+            
+            if col < 1 or col > max_cols:
+                return False, f"열 번호가 범위를 벗어났습니다: {col}\n\n구역 {zone_code}의 열 범위: 01~{max_cols:02d}"
+            
+            return True, ""
+        else:
+            # 구역 설정 파일이 없으면 기본 검증 (A, B 구역만)
+            pattern = r'^[AB]-(0[1-5])-(0[1-3])$'
+            if not re.match(pattern, location):
+                return False, "보관위치 형식이 올바르지 않습니다.\n\n형식: 알파벳(A,B) + 숫자2자리(01~05) + 숫자2자리(01~03)\n예시: A-01-01, B-03-02"
+            return True, ""
+            
+    except Exception as e:
+        print(f"보관위치 검증 오류: {e}")
+        # 오류 발생 시 기본 검증
+        pattern = r'^[A-Z]-\d{2}-\d{2}$'
+        if not re.match(pattern, location):
+            return False, "보관위치 형식이 올바르지 않습니다.\n\n형식: 알파벳(구역코드) + 숫자2자리(행) + 숫자2자리(열)\n예시: A-01-01, B-03-02"
+        return True, ""
 
 # 바코드 리딩 처리 함수
 def process_barcode_scan(barcode_data):
@@ -405,10 +413,26 @@ def show_next_barcode_prompt(current_type, next_type):
                           f"제품 바코드는 '88'로 시작합니다.")
         combo_code.focus()
     else:  # next_type == "보관위치"
+        # 구역 설정에 따른 보관위치 형식 안내
+        try:
+            zone_config_file = os.path.join(SCRIPT_DIR, "zone_config.json")
+            if os.path.exists(zone_config_file):
+                with open(zone_config_file, 'r', encoding='utf-8') as f:
+                    zone_config = json.load(f)
+                zones = list(zone_config.get('zones', {}).keys())
+                if zones:
+                    location_format = f"{zones[0]}-01-01, {zones[-1]}-05-03"
+                else:
+                    location_format = "A-01-01, B-03-02"
+            else:
+                location_format = "A-01-01, B-03-02"
+        except:
+            location_format = "A-01-01, B-03-02"
+        
         messagebox.showinfo("바코드 스캔 완료", 
                           f"✅ {current_type} 바코드 스캔 완료\n\n"
                           f"다음 단계: 보관위치 바코드를 스캔하세요\n"
-                          f"보관위치 형식: A-01-01, B-03-02")
+                          f"보관위치 형식: {location_format}")
         entry_location.focus()
 
 def update_barcode_status(status_text, color="#2196F3"):
@@ -428,11 +452,74 @@ def update_barcode_status(status_text, color="#2196F3"):
     except:
         pass  # 창이 닫혀있거나 오류가 발생해도 무시
 
-# 발행 내역 저장 함수
+# 발행 내역 저장 함수 (구글 스프레드시트 우선)
 def save_issue_history(product_code, lot, expiry, version, location, filename, category, barcode_number=None):
     try:
-        # 발행 내역 파일 경로
+        # 발행 내역 파일 경로 (백업용)
         history_file = os.path.join(os.path.dirname(__file__), "issue_history.xlsx")
+        
+        # 구글 스프레드시트가 설정되어 있으면 우선 사용
+        if GOOGLE_SHEETS_AVAILABLE and sheets_manager.spreadsheet_id:
+            try:
+                # 기존 데이터 로드 (구글 스프레드시트에서)
+                existing_data = []
+                if sheets_manager.authenticate():
+                    spreadsheet = sheets_manager.service.open_by_key(sheets_manager.spreadsheet_id)
+                    try:
+                        worksheet = spreadsheet.worksheet(sheets_manager.sheet_name)
+                        existing_data = worksheet.get_all_records()
+                    except gspread.WorksheetNotFound:
+                        # 시트가 없으면 새로 생성
+                        worksheet = spreadsheet.add_worksheet(title=sheets_manager.sheet_name, rows=1000, cols=10)
+                        # 헤더 추가
+                        headers = ['발행일시', '구분', '제품코드', '제품명', 'LOT', '유통기한', '버전', '폐기일자', '보관위치', '파일명', '바코드숫자']
+                        worksheet.append_row(headers)
+                
+                # 새 데이터 추가
+                product_name = products.get(product_code, "알 수 없는 제품")
+                
+                # 폐기일자 계산 (유통기한 + 1년)
+                try:
+                    if isinstance(expiry, datetime):
+                        expiry_date = expiry
+                    else:
+                        expiry_date = datetime.strptime(str(expiry), "%Y-%m-%d")
+                    
+                    disposal_date = expiry_date.replace(year=expiry_date.year + 1)
+                    disposal_date_str = disposal_date.strftime("%Y-%m-%d")
+                except Exception as e:
+                    print(f"폐기일자 계산 오류: {e}, 유통기한: {expiry}")
+                    disposal_date_str = "N/A"
+                
+                new_row = [
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    category,
+                    product_code,
+                    product_name,
+                    lot,
+                    expiry,
+                    version,
+                    disposal_date_str,
+                    location,
+                    filename,
+                    barcode_number if barcode_number else "N/A"
+                ]
+                
+                # 구글 스프레드시트에 추가
+                worksheet.append_row(new_row)
+                
+                # Excel 파일도 백업용으로 저장
+                all_data = existing_data + [dict(zip(['발행일시', '구분', '제품코드', '제품명', 'LOT', '유통기한', '버전', '폐기일자', '보관위치', '파일명', '바코드숫자'], new_row))]
+                df_history = pd.DataFrame(all_data)
+                df_history.to_excel(history_file, index=False)
+                
+                print(f"발행 내역이 구글 스프레드시트에 저장되었습니다.")
+                return
+                
+            except Exception as e:
+                print(f"구글 스프레드시트 저장 실패: {e}, Excel 파일로 저장합니다.")
+        
+        # 구글 스프레드시트가 없거나 실패한 경우 Excel 파일 사용
         # 파일이 없으면 디렉토리 생성 및 빈 파일 생성
         if not os.path.exists(history_file):
             os.makedirs(os.path.dirname(history_file), exist_ok=True)
@@ -505,10 +592,13 @@ def save_issue_history(product_code, lot, expiry, version, location, filename, c
         df_history = pd.concat([df_history, pd.DataFrame([new_row])], ignore_index=True)
         df_history.to_excel(history_file, index=False)
         
-        # 바코드 히스토리 CSV 파일에도 저장
-        if barcode_number and barcode_number != "N/A":
-            product_name = products.get(product_code, "알 수 없는 제품")
-            save_barcode_to_history(barcode_number, category, product_code, product_name, lot, expiry, location)
+        # 구글 스프레드시트에도 자동 저장 (설정된 경우)
+        if GOOGLE_SHEETS_AVAILABLE and sheets_manager.spreadsheet_id:
+            try:
+                sheets_manager.upload_to_sheets(history_file)
+                print(f"발행 내역이 구글 스프레드시트에도 자동 저장되었습니다.")
+            except Exception as e:
+                print(f"구글 스프레드시트 자동 저장 실패: {e}")
         
         print(f"발행 내역이 {history_file}에 저장되었습니다.")
         
@@ -585,7 +675,6 @@ def show_preview(label_image, filename, product_code, lot, expiry, version, loca
             try:
                 os.startfile(filename, "print")
                 time.sleep(2)
-                messagebox.showinfo("인쇄 완료", "라벨이 프린터로 전송되었습니다.\n\n💡 인쇄 팁:\n- 인쇄 창에서 '크기 조정' 옵션을 '실제 크기'로 설정하세요\n- '여백'을 '없음'으로 설정하면 더 깔끔하게 인쇄됩니다")
                 preview_window.destroy()
             except Exception as e:
                 messagebox.showerror("인쇄 오류", f"인쇄 실패: {e}")
@@ -624,7 +713,7 @@ def create_label(product_code, lot, expiry, version, location, category):
     product_name = products.get(product_code, "알 수 없는 제품")
 
     # 일련번호 생성 및 라벨 정보 저장
-    serial_number = save_label_info(product_code, lot, expiry, location, category)
+    serial_number = save_label_info(product_code, lot, expiry, version, location, category)
     
     # 바코드 데이터는 일련번호만 사용
     barcode_data = str(serial_number)
@@ -709,6 +798,10 @@ def create_label(product_code, lot, expiry, version, location, category):
             draw.text((20 + prefix_width, y_pos), line, fill="black", font=font_product)
         y_pos += 32  # 줄 간격 조정 (8 * 4)
     
+    # 구분 정보 추가 (제품명과 동일한 폰트 크기)
+    draw.text((20, y_pos), f"구분: {category}", fill="black", font=font_product)
+    y_pos += 32  # 줄 간격 조정 (8 * 4)
+    
     # LOT, 유통기한, 버전을 같은 줄에 배치
     lot_expiry_version_text = f"LOT: {lot}    유통기한: {expiry}    버전: {version}"
     draw.text((20, y_pos), lot_expiry_version_text, fill="black", font=font_info)
@@ -768,7 +861,7 @@ def create_label(product_code, lot, expiry, version, location, category):
             draw.text((text_x, LABEL_HEIGHT - 50), barcode_text, fill="black", font=font_small)
 
     # labeljpg 폴더 생성 및 확인
-    labeljpg_dir = "labeljpg"
+    labeljpg_dir = os.path.join(SCRIPT_DIR, "labeljpg")
     if not os.path.exists(labeljpg_dir):
         os.makedirs(labeljpg_dir)
     
@@ -777,6 +870,17 @@ def create_label(product_code, lot, expiry, version, location, category):
     
     # 파일 저장
     label.save(filename)
+    
+    # 구글 드라이브에 업로드
+    if GOOGLE_DRIVE_AVAILABLE:
+        try:
+            drive_result = drive_manager.upload_label_image(filename)
+            if drive_result:
+                print(f"구글 드라이브 업로드 성공: {drive_result['name']}")
+            else:
+                print("구글 드라이브 업로드 실패")
+        except Exception as e:
+            print(f"구글 드라이브 업로드 오류: {e}")
     
     # 발행 내역 저장 (바코드 숫자 포함)
     save_issue_history(product_code, lot, expiry, version, location, filename, category, serial_number)
@@ -816,18 +920,25 @@ def create_zpl_label(product_code, lot, expiry, version, location, category):
     product_name = products.get(product_code, "Unknown Product")
     
     # 일련번호 생성 및 라벨 정보 저장
-    serial_number = save_label_info(product_code, lot, expiry, location, category)
+    serial_number = save_label_info(product_code, lot, expiry, version, location, category)
     
     # 바코드 데이터는 일련번호만 사용
     barcode_data = str(serial_number)
+    
+    # ZPL 파일명 생성
+    zpl_filename = f"{product_code}-{location}.zpl"
+    
+    # 발행 내역 저장 (ZPL 파일용)
+    save_issue_history(product_code, lot, expiry, version, location, zpl_filename, category, serial_number)
     
     # 영문 ZPL 코드 생성 (40mm x 30mm 용지, 4배 확대된 해상도, Code128 바코드 사용)
     zpl_code = f"""^XA
 ^PW640
 ^LL480
 ^FO25,25^A0N,24,24^FDProduct: {product_name}^FS
-^FO25,90^A0N,24,24^FDLOT: {lot}    Expiry: {expiry}    Version: {version}^FS
-^FO25,200^A0N,24,24^FDLocation: {location}^FS
+^FO25,60^A0N,24,24^FDCategory: {category}^FS
+^FO25,95^A0N,24,24^FDLOT: {lot}    Expiry: {expiry}    Version: {version}^FS
+^FO25,130^A0N,24,24^FDLocation: {location}^FS
 ^FO5,200^BY40^B2N,1200,Y,N,N^FD{barcode_data}^FS
 ^FO25,440^A0N,20,20^FD{product_code}-{lot}-{expiry}-{version}^FS
 ^XZ"""
@@ -836,7 +947,7 @@ def create_zpl_label(product_code, lot, expiry, version, location, category):
 def save_zpl_file(zpl_code, product_code, lot, expiry, version, location):
     """ZPL 코드를 파일로 저장"""
     # zpl 폴더 생성
-    zpl_dir = "zpl"
+    zpl_dir = os.path.join(SCRIPT_DIR, "zpl")
     if not os.path.exists(zpl_dir):
         os.makedirs(zpl_dir)
     
@@ -844,6 +955,17 @@ def save_zpl_file(zpl_code, product_code, lot, expiry, version, location):
     filename = os.path.join(zpl_dir, f"{product_code}-{location}.zpl")
     with open(filename, "w", encoding='utf-8') as f:
         f.write(zpl_code)
+    
+    # 구글 드라이브에 업로드
+    if GOOGLE_DRIVE_AVAILABLE:
+        try:
+            drive_result = drive_manager.upload_zpl_file(filename)
+            if drive_result:
+                print(f"ZPL 파일 구글 드라이브 업로드 성공: {drive_result['name']}")
+            else:
+                print("ZPL 파일 구글 드라이브 업로드 실패")
+        except Exception as e:
+            print(f"ZPL 파일 구글 드라이브 업로드 오류: {e}")
     
     return filename
 
@@ -1193,16 +1315,83 @@ tk.Label(root, text="보관위치:").pack(pady=5)
 location_frame = tk.Frame(root)
 location_frame.pack(pady=5)
 
-# 보관위치 드롭다운 생성
-location_options = []
-for zone in ['A', 'B']:
-    for section in range(1, 6):
-        for position in range(1, 4):
-            location_options.append(f"{zone}-{section:02d}-{position:02d}")
+# 구역 설정 로드 함수
+def load_zone_config():
+    """구역 설정 파일을 로드하여 보관위치 옵션을 생성"""
+    try:
+        zone_config_file = os.path.join(SCRIPT_DIR, "zone_config.json")
+        if os.path.exists(zone_config_file):
+            with open(zone_config_file, 'r', encoding='utf-8') as f:
+                zone_config = json.load(f)
+            
+            location_options = []
+            for zone_code, zone_data in zone_config.get('zones', {}).items():
+                rows = zone_data.get('sections', {}).get('rows', 5)
+                columns = zone_data.get('sections', {}).get('columns', 3)
+                
+                for row in range(1, rows + 1):
+                    for col in range(1, columns + 1):
+                        location_options.append(f"{zone_code}-{row:02d}-{col:02d}")
+            
+            print(f"구역 설정에서 {len(location_options)}개의 보관위치 옵션을 생성했습니다.")
+            return location_options
+        else:
+            print("구역 설정 파일이 없습니다. 기본 옵션을 사용합니다.")
+            # 기본 옵션 (A, B 구역만)
+            return [f"{zone}-{section:02d}-{position:02d}" 
+                   for zone in ['A', 'B'] 
+                   for section in range(1, 6) 
+                   for position in range(1, 4)]
+    except Exception as e:
+        print(f"구역 설정 로드 오류: {e}. 기본 옵션을 사용합니다.")
+        # 기본 옵션 (A, B 구역만)
+        return [f"{zone}-{section:02d}-{position:02d}" 
+               for zone in ['A', 'B'] 
+               for section in range(1, 6) 
+               for position in range(1, 4)]
+
+# 보관위치 드롭다운 생성 (동적 로드)
+location_options = load_zone_config()
 
 location_var = tk.StringVar()
 location_combo = ttk.Combobox(location_frame, textvariable=location_var, values=location_options, width=15)
 location_combo.pack(side=tk.LEFT, padx=(0, 10))
+
+# 보관위치 드롭다운 새로고침 함수
+def refresh_location_options():
+    """구역 설정 변경 시 보관위치 드롭다운 새로고침"""
+    global location_options
+    location_options = load_zone_config()
+    location_combo['values'] = location_options
+    help_label.config(text=update_location_help(), fg="gray")
+    print("보관위치 드롭다운이 구역 설정에 맞게 새로고침되었습니다.")
+
+# 구역 설정 파일 변경 감지 및 자동 새로고침
+def check_zone_config_changes():
+    """구역 설정 파일 변경을 감지하여 보관위치 드롭다운 새로고침"""
+    global last_zone_config_mtime
+    
+    try:
+        zone_config_file = os.path.join(SCRIPT_DIR, "zone_config.json")
+        if os.path.exists(zone_config_file):
+            current_mtime = os.path.getmtime(zone_config_file)
+            if current_mtime != last_zone_config_mtime:
+                last_zone_config_mtime = current_mtime
+                refresh_location_options()
+    except:
+        pass
+    
+    # 1초마다 체크
+    root.after(1000, check_zone_config_changes)
+
+# 구역 설정 파일 마지막 수정 시간 초기화
+last_zone_config_mtime = 0
+try:
+    zone_config_file = os.path.join(SCRIPT_DIR, "zone_config.json")
+    if os.path.exists(zone_config_file):
+        last_zone_config_mtime = os.path.getmtime(zone_config_file)
+except:
+    pass
 
 # 보관위치 바코드 리딩 기능 (자동 다음 필드 이동)
 def on_location_change(*args):
@@ -1218,29 +1407,20 @@ def on_location_change(*args):
                 # 샘플재고인 경우 바로 라벨 생성
                 on_submit()
 
-# LOT 바코드 리딩 기능 (자동 다음 필드 이동)
+# LOT 바코드 리딩 기능 (자동 다음 필드 이동 제거)
 def on_lot_change(*args):
-    """LOT 변경 시 자동으로 유통기한 필드로 이동"""
-    lot = entry_lot.get().strip()
-    if lot:
-        # 성공 시 유통기한 필드로 자동 이동
-        entry_expiry.focus()
+    """LOT 변경 시 자동 이동 제거 - 수동으로 다음 필드로 이동해야 함"""
+    pass
 
-# 유통기한 바코드 리딩 기능 (자동 다음 필드 이동)
+# 유통기한 바코드 리딩 기능 (자동 다음 필드 이동 제거)
 def on_expiry_change(*args):
-    """유통기한 변경 시 자동으로 버전 필드로 이동"""
-    expiry = entry_expiry.get().strip()
-    if expiry:
-        # 성공 시 버전 필드로 자동 이동
-        entry_version.focus()
+    """유통기한 변경 시 자동 이동 제거 - 수동으로 다음 필드로 이동해야 함"""
+    pass
 
-# 버전 바코드 리딩 기능 (자동 라벨 생성)
+# 버전 바코드 리딩 기능 (자동 라벨 생성 제거)
 def on_version_change(*args):
-    """버전 변경 시 자동으로 라벨 생성"""
-    version = entry_version.get().strip()
-    if version:
-        # 성공 시 라벨 생성
-        on_submit()
+    """버전 변경 시 자동 라벨 생성 제거 - 수동으로 제출해야 함"""
+    pass
 
 location_combo.bind('<<ComboboxSelected>>', on_location_change)
 location_combo.bind('<KeyRelease>', on_location_change)
@@ -1254,18 +1434,38 @@ if args.location:
 def validate_location_realtime(*args):
     location = location_var.get().strip()
     if location:
-        is_valid, _ = validate_location(location)
+        is_valid, error_msg = validate_location(location)
         if is_valid:
             help_label.config(text="✓ 올바른 형식입니다", fg="green")
         else:
-            help_label.config(text="형식: A-01-01, B-03-02 (A,B 구역, 01~05, 01~03)", fg="red")
+            help_label.config(text=error_msg, fg="red")
     else:
-        help_label.config(text="형식: A-01-01, B-03-02 (A,B 구역, 01~05, 01~03)", fg="gray")
+        help_label.config(text=update_location_help(), fg="gray")
 
 location_combo.bind('<KeyRelease>', validate_location_realtime)
 
-# 보관위치 도움말
-help_label = tk.Label(root, text="형식: A-01-01, B-03-02 (A,B 구역, 01~05, 01~03)", 
+# 보관위치 도움말 (구역 설정 기반)
+def update_location_help():
+    """구역 설정에 따라 보관위치 도움말 업데이트"""
+    try:
+        zone_config_file = os.path.join(SCRIPT_DIR, "zone_config.json")
+        if os.path.exists(zone_config_file):
+            with open(zone_config_file, 'r', encoding='utf-8') as f:
+                zone_config = json.load(f)
+            
+            zones = list(zone_config.get('zones', {}).keys())
+            if zones:
+                help_text = f"형식: {zones[0]}-01-01, {zones[-1]}-05-03 (구역: {', '.join(zones)})"
+            else:
+                help_text = "형식: A-01-01, B-03-02 (A,B 구역, 01~05, 01~03)"
+        else:
+            help_text = "형식: A-01-01, B-03-02 (A,B 구역, 01~05, 01~03)"
+    except:
+        help_text = "형식: A-01-01, B-03-02 (A,B 구역, 01~05, 01~03)"
+    
+    return help_text
+
+help_label = tk.Label(root, text=update_location_help(), 
                       font=("맑은 고딕", 8), fg="gray")
 help_label.pack(pady=2)
 
@@ -1273,7 +1473,7 @@ help_label.pack(pady=2)
 lot_label = tk.Label(root, text="LOT 번호:")
 entry_lot = tk.Entry(root, width=30)
 
-# LOT 바코드 리딩 기능 (자동 다음 필드 이동)
+# LOT 바코드 리딩 기능 (Enter 키 자동 이동 유지)
 def on_lot_enter(event):
     """LOT 입력 후 Enter 키로 유통기한 필드로 이동"""
     if event.char == '\r':  # Enter 키
@@ -1476,15 +1676,60 @@ def open_zone_manager():
         messagebox.showerror("오류", f"구역 관리 창을 열 수 없습니다: {str(e)}")
 
 def view_history():
+    """발행 내역 조회 및 관리 (구글 스프레드시트 우선)"""
     try:
-        history_file = "barcode_label/issue_history.xlsx"
-        if os.path.exists(history_file):
-            df_history = pd.read_excel(history_file)
-            
-            # 새 창에 발행 내역 표시
+        # 구글 스프레드시트가 설정되어 있으면 우선 사용
+        if GOOGLE_SHEETS_AVAILABLE and sheets_manager.spreadsheet_id:
+            try:
+                if sheets_manager.authenticate():
+                    spreadsheet = sheets_manager.service.open_by_key(sheets_manager.spreadsheet_id)
+                    try:
+                        worksheet = spreadsheet.worksheet(sheets_manager.sheet_name)
+                        data = worksheet.get_all_records()
+                        df_history = pd.DataFrame(data)
+                        print(f"구글 스프레드시트에서 {len(df_history)}개 행을 로드했습니다.")
+                    except gspread.WorksheetNotFound:
+                        print("구글 스프레드시트에 시트가 없습니다. Excel 파일을 사용합니다.")
+                        # Excel 파일로 폴백
+                        history_file = os.path.join(SCRIPT_DIR, "issue_history.xlsx")
+                        if os.path.exists(history_file):
+                            df_history = pd.read_excel(history_file)
+                        else:
+                            messagebox.showinfo("알림", "발행 내역이 없습니다.")
+                            return
+                else:
+                    print("구글 스프레드시트 인증 실패. Excel 파일을 사용합니다.")
+                    # Excel 파일로 폴백
+                    history_file = os.path.join(SCRIPT_DIR, "issue_history.xlsx")
+                    if os.path.exists(history_file):
+                        df_history = pd.read_excel(history_file)
+                    else:
+                        messagebox.showinfo("알림", "발행 내역이 없습니다.")
+                        return
+            except Exception as e:
+                print(f"구글 스프레드시트 로드 실패: {e}, Excel 파일을 사용합니다.")
+                # Excel 파일로 폴백
+                history_file = os.path.join(SCRIPT_DIR, "issue_history.xlsx")
+                if os.path.exists(history_file):
+                    df_history = pd.read_excel(history_file)
+                else:
+                    # 빈 DataFrame 생성하여 GUI는 표시
+                    df_history = pd.DataFrame(columns=['일련번호', '구분', '제품코드', '제품명', 'LOT', '유통기한', '폐기일자', '보관위치', '버전', '발행일시'])
+                    print("발행 내역이 없습니다. 빈 테이블을 표시합니다.")
+        else:
+            # 구글 스프레드시트가 설정되지 않은 경우 Excel 파일 사용
+            history_file = os.path.join(SCRIPT_DIR, "issue_history.xlsx")
+            if os.path.exists(history_file):
+                df_history = pd.read_excel(history_file)
+            else:
+                # 빈 DataFrame 생성하여 GUI는 표시
+                df_history = pd.DataFrame(columns=['일련번호', '구분', '제품코드', '제품명', 'LOT', '유통기한', '폐기일자', '보관위치', '버전', '발행일시'])
+                print("발행 내역이 없습니다. 빈 테이블을 표시합니다.")
+        
+        # 새 창에 발행 내역 표시
             history_window = tk.Toplevel(root)
             history_window.title("발행 내역 조회 및 관리")
-            history_window.geometry("1200x700")
+            history_window.geometry("1400x800")
             
             # 검색 및 필터링 프레임
             search_frame = tk.Frame(history_window)
@@ -1493,10 +1738,10 @@ def view_history():
             # 검색 옵션
             tk.Label(search_frame, text="검색:", font=("맑은 고딕", 10, "bold")).pack(side=tk.LEFT, padx=(0, 5))
             
-            # 검색 필드 선택
+            # 검색 필드 선택 (새로운 컬럼 순서에 맞춰 수정)
             search_field_var = tk.StringVar(value="제품코드")
             search_field_combo = ttk.Combobox(search_frame, textvariable=search_field_var, 
-                                            values=["구분", "제품코드", "제품명", "LOT", "유통기한", "보관위치", "바코드숫자"], 
+                                            values=["일련번호", "구분", "제품코드", "제품명", "LOT", "유통기한", "폐기일자", "보관위치", "버전", "발행일시"], 
                                             width=10, state="readonly")
             search_field_combo.pack(side=tk.LEFT, padx=5)
             
@@ -1594,10 +1839,20 @@ def view_history():
                     for item in tree.get_children():
                         tree.delete(item)
                     
-                    # 데이터 추가
+                    # 데이터 추가 (일련번호를 정수로 표시)
                     if hasattr(filtered_df, 'iterrows'):
                         for idx, row in filtered_df.iterrows():
-                            tree.insert('', 'end', values=list(row), tags=(str(idx),))
+                            # 일련번호를 정수로 변환
+                            values = list(row)
+                            if '일련번호' in available_columns:
+                                serial_index = available_columns.index('일련번호')
+                                if values[serial_index] is not None and str(values[serial_index]) != 'nan':
+                                    try:
+                                        values[serial_index] = int(float(values[serial_index]))
+                                    except (ValueError, TypeError):
+                                        values[serial_index] = values[serial_index]
+                            
+                            tree.insert('', 'end', values=values, tags=(str(idx),))
                     
                     # 결과 개수 표시
                     result_count = len(filtered_df)
@@ -1640,7 +1895,12 @@ def view_history():
                         export_data.append(values)
                     
                     if export_data:
-                        export_df = pd.DataFrame(export_data, columns=df_history.columns)
+                        export_df = pd.DataFrame(export_data, columns=available_columns)
+                        
+                        # 일련번호 컬럼을 정수로 변환
+                        if '일련번호' in export_df.columns:
+                            export_df['일련번호'] = pd.to_numeric(export_df['일련번호'], errors='coerce').fillna(0).astype(int)
+                        
                         export_df.to_excel(export_filename, index=False)
                         messagebox.showinfo("내보내기 완료", f"데이터가 {export_filename}로 내보내기되었습니다.")
                     else:
@@ -1654,12 +1914,92 @@ def view_history():
                                   relief=tk.FLAT, bd=0, padx=15, pady=3)
             export_btn.pack(side=tk.LEFT, padx=5)
             
+            # 구글 스프레드시트 연동 버튼들 (항상 표시)
+            print(f"GOOGLE_SHEETS_AVAILABLE: {GOOGLE_SHEETS_AVAILABLE}")
+            
+            # 구글 스프레드시트 설정 버튼 (항상 표시)
+            def setup_google_sheets():
+                try:
+                    if sheets_manager.setup_initial_config():
+                        messagebox.showinfo("설정 완료", "구글 스프레드시트 설정이 완료되었습니다.")
+                    else:
+                        messagebox.showwarning("설정 취소", "구글 스프레드시트 설정이 취소되었습니다.")
+                except Exception as e:
+                    messagebox.showerror("설정 오류", f"설정 중 오류가 발생했습니다: {e}")
+            
+            setup_btn = tk.Button(button_frame, text="⚙️ 구글시트 설정", command=setup_google_sheets,
+                                 bg="#EA4335", fg="white", font=("맑은 고딕", 10),
+                                 relief=tk.FLAT, bd=0, padx=15, pady=3)
+            setup_btn.pack(side=tk.LEFT, padx=5)
+            
+            if GOOGLE_SHEETS_AVAILABLE:
+                # 구글 스프레드시트 업로드 버튼
+                def upload_to_google_sheets():
+                    try:
+                        if sheets_manager.upload_to_sheets(history_file):
+                            messagebox.showinfo("업로드 완료", 
+                                              f"발행 내역이 구글 스프레드시트에 업로드되었습니다.\n\n"
+                                              f"스프레드시트 URL: {sheets_manager.get_spreadsheet_url()}")
+                        else:
+                            messagebox.showerror("업로드 실패", "구글 스프레드시트 업로드에 실패했습니다.")
+                    except Exception as e:
+                        messagebox.showerror("업로드 오류", f"업로드 중 오류가 발생했습니다: {e}")
+                
+                upload_btn = tk.Button(button_frame, text="☁️ 구글시트 업로드", command=upload_to_google_sheets,
+                                      bg="#4285F4", fg="white", font=("맑은 고딕", 10),
+                                      relief=tk.FLAT, bd=0, padx=15, pady=3)
+                upload_btn.pack(side=tk.LEFT, padx=5)
+                
+                # 구글 스프레드시트 다운로드 버튼
+                def download_from_google_sheets():
+                    try:
+                        if sheets_manager.download_from_sheets(history_file):
+                            messagebox.showinfo("다운로드 완료", 
+                                              f"구글 스프레드시트에서 발행 내역을 다운로드했습니다.\n\n"
+                                              f"파일: {history_file}")
+                            # 창 새로고침
+                            view_history()
+                        else:
+                            messagebox.showerror("다운로드 실패", "구글 스프레드시트 다운로드에 실패했습니다.")
+                    except Exception as e:
+                        messagebox.showerror("다운로드 오류", f"다운로드 중 오류가 발생했습니다: {e}")
+                
+                download_btn = tk.Button(button_frame, text="⬇️ 구글시트 다운로드", command=download_from_google_sheets,
+                                        bg="#34A853", fg="white", font=("맑은 고딕", 10),
+                                        relief=tk.FLAT, bd=0, padx=15, pady=3)
+                download_btn.pack(side=tk.LEFT, padx=5)
+            else:
+                # 구글 스프레드시트 모듈이 없는 경우 안내
+                info_btn = tk.Button(button_frame, text="ℹ️ 구글시트 미지원", 
+                                    command=lambda: messagebox.showinfo("구글 스프레드시트", 
+                                                                       "구글 스프레드시트 연동 모듈이 설치되지 않았습니다.\n\n"
+                                                                       "설치 방법:\n"
+                                                                       "pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client gspread"),
+                                    bg="#9E9E9E", fg="white", font=("맑은 고딕", 10),
+                                    relief=tk.FLAT, bd=0, padx=15, pady=3)
+                info_btn.pack(side=tk.LEFT, padx=5)
+            
             # 프레임 생성
             tree_frame = tk.Frame(history_window)
             tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
             
-            # Treeview로 표시 (다중 선택 가능)
-            tree = ttk.Treeview(tree_frame, columns=list(df_history.columns), show='headings', height=15, selectmode='extended')
+            # Treeview로 표시 (다중 선택 가능) - 새로운 컬럼 순서로 재구성
+            # 요청된 순서: 일련번호, 구분, 제품코드, 제품명, LOT, 유통기한, 폐기일자, 보관위치, 버전, 발행일시
+            new_columns = ['일련번호', '구분', '제품코드', '제품명', 'LOT', '유통기한', '폐기일자', '보관위치', '버전', '발행일시']
+            
+            # 기존 데이터에서 필요한 컬럼만 선택하고 순서 재배열
+            if '바코드숫자' in df_history.columns:
+                df_history = df_history.rename(columns={'바코드숫자': '일련번호'})
+            
+            # 버전 컬럼이 없으면 추가
+            if '버전' not in df_history.columns:
+                df_history['버전'] = 'N/A'
+            
+            # 컬럼 순서 재배열
+            available_columns = [col for col in new_columns if col in df_history.columns]
+            df_history = df_history[available_columns]
+            
+            tree = ttk.Treeview(tree_frame, columns=available_columns, show='headings', height=15, selectmode='extended')
             
             # 스크롤바 추가
             scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=tree.yview)
@@ -1667,7 +2007,7 @@ def view_history():
             
             # 컬럼 설정
             column_widths = {
-                '발행일시': 150,
+                '일련번호': 80,
                 '구분': 80,
                 '제품코드': 100,
                 '제품명': 200,
@@ -1675,17 +2015,27 @@ def view_history():
                 '유통기한': 120,
                 '폐기일자': 120,
                 '보관위치': 100,
-                '파일명': 200,
-                '바코드숫자': 100
+                '버전': 80,
+                '발행일시': 150
             }
             
-            for col in df_history.columns:
+            for col in available_columns:
                 tree.heading(col, text=col)
                 tree.column(col, width=column_widths.get(col, 120))
             
-            # 데이터 추가
+            # 데이터 추가 (일련번호를 정수로 표시)
             for idx, row in df_history.iterrows():
-                tree.insert('', 'end', values=list(row), tags=(str(idx),))
+                # 일련번호를 정수로 변환
+                values = list(row)
+                if '일련번호' in available_columns:
+                    serial_index = available_columns.index('일련번호')
+                    if values[serial_index] is not None and str(values[serial_index]) != 'nan':
+                        try:
+                            values[serial_index] = int(float(values[serial_index]))
+                        except (ValueError, TypeError):
+                            values[serial_index] = values[serial_index]
+                
+                tree.insert('', 'end', values=values, tags=(str(idx),))
             
             tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
             scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -1713,7 +2063,7 @@ def view_history():
                 barcode_number = item_values[8] if len(item_values) > 8 else "N/A"  # 바코드 숫자
                 
                 # 파일 존재 확인 (labeljpg 폴더 내에서 확인)
-                labeljpg_dir = "labeljpg"
+                labeljpg_dir = os.path.join(SCRIPT_DIR, "labeljpg")
                 file_path = os.path.join(labeljpg_dir, filename)
                 
                 if os.path.exists(file_path):
@@ -1791,7 +2141,7 @@ def view_history():
                         tree.delete(data['item_id'])
                         
                         # 파일도 삭제 (선택사항) - labeljpg 폴더 내에서 확인
-                        labeljpg_dir = "labeljpg"
+                        labeljpg_dir = os.path.join(SCRIPT_DIR, "labeljpg")
                         file_path = os.path.join(labeljpg_dir, data['filename'])
                         if os.path.exists(file_path):
                             try:
@@ -1863,9 +2213,6 @@ def view_history():
             # 초기 필터 적용 (최신순으로 정렬)
             apply_filters()
             
-        else:
-            messagebox.showinfo("알림", "발행 내역이 없습니다.")
-            
     except Exception as e:
         messagebox.showerror("오류", f"발행 내역 조회 중 오류: {e}")
 
@@ -1901,52 +2248,73 @@ tk.Button(button_frame2, text="🧐 관리품 위치 찾기", command=open_locat
           bg="#4CAF50", fg="white", font=("맑은 고딕", 10, "bold")).pack(side=tk.LEFT, padx=5)
 tk.Button(button_frame2, text="📋 발행 내역", command=view_history, 
           bg="#9C27B0", fg="white", font=("맑은 고딕", 10, "bold")).pack(side=tk.LEFT, padx=5)
-tk.Button(button_frame2, text="📊 바코드 히스토리", command=view_barcode_history, 
-          bg="#FF5722", fg="white", font=("맑은 고딕", 10, "bold")).pack(side=tk.LEFT, padx=5)
+# 바코드 히스토리 버튼 제거 (발행 내역으로 통합)
 tk.Button(button_frame2, text="⚙️ 구역 관리", command=open_zone_manager, 
           bg="#607D8B", fg="white", font=("맑은 고딕", 10, "bold")).pack(side=tk.LEFT, padx=5)
+
+# 구글 스프레드시트 설정 버튼 (메인 화면에 추가)
+def setup_google_sheets_main():
+    try:
+        if sheets_manager.setup_initial_config():
+            messagebox.showinfo("설정 완료", "구글 스프레드시트 설정이 완료되었습니다.")
+        else:
+            messagebox.showwarning("설정 취소", "구글 스프레드시트 설정이 취소되었습니다.")
+    except Exception as e:
+        messagebox.showerror("설정 오류", f"설정 중 오류가 발생했습니다: {e}")
+
+tk.Button(button_frame2, text="☁️ 구글시트 설정", command=setup_google_sheets_main, 
+          bg="#EA4335", fg="white", font=("맑은 고딕", 10, "bold")).pack(side=tk.LEFT, padx=5)
+
+# 구글 드라이브 설정 함수
+def setup_google_drive_main():
+    """메인 화면에서 구글 드라이브 설정"""
+    try:
+        if GOOGLE_DRIVE_AVAILABLE:
+            result = drive_manager.setup_initial_config()
+            if result:
+                messagebox.showinfo("설정 완료", "구글 드라이브 설정이 완료되었습니다!")
+            else:
+                messagebox.showwarning("설정 실패", "구글 드라이브 설정에 실패했습니다.")
+        else:
+            messagebox.showerror("모듈 오류", "구글 드라이브 연동 모듈을 불러올 수 없습니다.")
+    except Exception as e:
+        messagebox.showerror("설정 오류", f"구글 드라이브 설정 중 오류가 발생했습니다: {e}")
+
+tk.Button(button_frame2, text="📁 구글드라이브 설정", command=setup_google_drive_main, 
+          bg="#4285F4", fg="white", font=("맑은 고딕", 10, "bold")).pack(side=tk.LEFT, padx=5)
 
 # 일련번호 관리 시스템
 def init_serial_database():
     """일련번호 데이터베이스 초기화"""
-    conn = sqlite3.connect('label_serial.db')
+    db_path = os.path.join(SCRIPT_DIR, 'label_serial.db')
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # 기존 테이블이 있는지 확인
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='label_info'")
-    table_exists = cursor.fetchone() is not None
+    # 기존 테이블 삭제 (일련번호 문제 해결을 위해)
+    cursor.execute("DROP TABLE IF EXISTS label_info")
     
-    if table_exists:
-        # 기존 테이블에 버전 컬럼이 있는지 확인
-        cursor.execute("PRAGMA table_info(label_info)")
-        columns = [column[1] for column in cursor.fetchall()]
-        
-        if 'version' not in columns:
-            # 버전 컬럼 추가
-            cursor.execute('ALTER TABLE label_info ADD COLUMN version TEXT DEFAULT "N/A"')
-            print("기존 데이터베이스에 버전 컬럼을 추가했습니다.")
-    else:
-        # 새 테이블 생성
-        cursor.execute('''
-            CREATE TABLE label_info (
-                serial_number INTEGER PRIMARY KEY AUTOINCREMENT,
-                product_code TEXT NOT NULL,
-                lot TEXT NOT NULL,
-                expiry TEXT NOT NULL,
-                version TEXT NOT NULL,
-                location TEXT NOT NULL,
-                category TEXT NOT NULL,
-                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        print("새 라벨 정보 테이블을 생성했습니다.")
+    # 새 테이블 생성 (AUTOINCREMENT 완전 제거, 명시적 일련번호 관리)
+    cursor.execute('''
+        CREATE TABLE label_info (
+            serial_number INTEGER,
+            product_code TEXT NOT NULL,
+            lot TEXT NOT NULL,
+            expiry TEXT NOT NULL,
+            version TEXT NOT NULL,
+            location TEXT NOT NULL,
+            category TEXT NOT NULL,
+            created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    print("라벨 정보 테이블을 새로 생성했습니다 (AUTOINCREMENT 제거).")
     
     conn.commit()
     conn.close()
 
 def get_next_serial_number():
     """다음 일련번호 가져오기"""
-    conn = sqlite3.connect('label_serial.db')
+    db_path = os.path.join(SCRIPT_DIR, 'label_serial.db')
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
     cursor.execute('SELECT MAX(serial_number) FROM label_info')
@@ -1961,50 +2329,52 @@ def get_next_serial_number():
 
 def save_label_info(product_code, lot, expiry, version, location, category):
     """라벨 정보 저장 및 일련번호 반환"""
-    conn = sqlite3.connect('label_serial.db')
+    db_path = os.path.join(SCRIPT_DIR, 'label_serial.db')
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # 테이블 구조 확인
-    cursor.execute("PRAGMA table_info(label_info)")
-    columns = [column[1] for column in cursor.fetchall()]
-    
-    if 'version' in columns:
-        # 버전 컬럼이 있는 경우
+    try:
+        # 다음 일련번호를 명시적으로 계산
+        cursor.execute('SELECT MAX(serial_number) FROM label_info')
+        result = cursor.fetchone()
+        current_max = result[0] if result[0] is not None else 0
+        next_serial = current_max + 1
+        
+        print(f"현재 최대 일련번호: {current_max}, 다음 일련번호: {next_serial}")
+        
+        # 명시적 일련번호로 데이터 삽입
         cursor.execute('''
-            INSERT INTO label_info (product_code, lot, expiry, version, location, category)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (product_code, lot, expiry, version, location, category))
-    else:
-        # 버전 컬럼이 없는 경우 (기존 데이터베이스)
-        cursor.execute('''
-            INSERT INTO label_info (product_code, lot, expiry, location, category)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (product_code, lot, expiry, location, category))
-    
-    serial_number = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    
-    return serial_number
+            INSERT INTO label_info (serial_number, product_code, lot, expiry, version, location, category)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (next_serial, product_code, lot, expiry, version, location, category))
+        
+        # 트랜잭션 커밋
+        conn.commit()
+        
+        print(f"일련번호 생성 성공: {next_serial}")
+        return next_serial
+        
+    except Exception as e:
+        print(f"라벨 정보 저장 오류: {e}")
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def get_label_info_by_serial(serial_number):
     """일련번호로 라벨 정보 조회"""
-    conn = sqlite3.connect('label_serial.db')
+    db_path = os.path.join(SCRIPT_DIR, 'label_serial.db')
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # 테이블 구조 확인
-    cursor.execute("PRAGMA table_info(label_info)")
-    columns = [column[1] for column in cursor.fetchall()]
-    
-    if 'version' in columns:
-        # 버전 컬럼이 있는 경우
+    try:
+        # 버전 컬럼이 있는 새로운 테이블 구조 사용
         cursor.execute('''
             SELECT product_code, lot, expiry, version, location, category
             FROM label_info WHERE serial_number = ?
         ''', (serial_number,))
         
         result = cursor.fetchone()
-        conn.close()
         
         if result:
             return {
@@ -2015,27 +2385,14 @@ def get_label_info_by_serial(serial_number):
                 'location': result[4],
                 'category': result[5]
             }
-    else:
-        # 버전 컬럼이 없는 경우 (기존 데이터)
-        cursor.execute('''
-            SELECT product_code, lot, expiry, location, category
-            FROM label_info WHERE serial_number = ?
-        ''', (serial_number,))
         
-        result = cursor.fetchone()
+        return None
+        
+    except Exception as e:
+        print(f"라벨 정보 조회 오류: {e}")
+        return None
+    finally:
         conn.close()
-        
-        if result:
-            return {
-                'product_code': result[0],
-                'lot': result[1],
-                'expiry': result[2],
-                'version': 'N/A',  # 기본값
-                'location': result[3],
-                'category': result[4]
-            }
-    
-    return None
 
 def process_serial_barcode(serial_number):
     """일련번호 바코드 처리"""
@@ -2083,5 +2440,13 @@ init_serial_database()
 
 # 제품 정보 로드
 products, barcode_to_product, expiry_info = load_products()
+
+# 구글 스프레드시트 초기 설정 확인
+if GOOGLE_SHEETS_AVAILABLE and not sheets_manager.spreadsheet_id:
+    print("구글 스프레드시트가 설정되지 않았습니다. 설정을 권장합니다.")
+    print("메인 화면의 '☁️ 구글시트 설정' 버튼을 클릭하여 설정하세요.")
+
+# root.mainloop() 호출 후에 구역 설정 변경 감지 시작
+root.after(100, check_zone_config_changes)
 
 root.mainloop()

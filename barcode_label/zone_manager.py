@@ -146,7 +146,7 @@ class ZoneManager:
             messagebox.showerror("저장 오류", f"설정을 저장할 수 없습니다: {e}")
     
     def notify_visualizer(self):
-        """시각화 창에 설정 변경 알림"""
+        """시각화 창과 라벨 생성 창에 설정 변경 알림"""
         try:
             # 시각화 창이 열려있는지 확인하고 알림
             for widget in self.root.winfo_children():
@@ -174,6 +174,34 @@ class ZoneManager:
                     break
         except:
             pass  # 시각화 창이 없으면 무시
+        
+        # 라벨 생성 창에 알림
+        try:
+            for widget in self.root.winfo_children():
+                if isinstance(widget, tk.Toplevel) and "라벨 생성 및 인쇄" in widget.title():
+                    # 알림 메시지 표시
+                    notification = tk.Toplevel(widget)
+                    notification.title("구역 설정 변경 알림")
+                    notification.geometry("400x200")
+                    notification.resizable(False, False)
+                    
+                    # 알림 메시지
+                    msg_label = tk.Label(notification, 
+                                       text="✅ 구역 설정이 변경되었습니다!\n\n보관위치 드롭다운이 자동으로\n새로고침됩니다.",
+                                       font=("맑은 고딕", 10), justify=tk.CENTER)
+                    msg_label.pack(pady=20)
+                    
+                    # 확인 버튼
+                    ok_btn = tk.Button(notification, text="확인", command=notification.destroy,
+                                      bg="#4CAF50", fg="white", font=("맑은 고딕", 10),
+                                      relief=tk.FLAT, bd=0, padx=20, pady=5)
+                    ok_btn.pack(pady=10)
+                    
+                    # 3초 후 자동으로 닫기
+                    notification.after(3000, notification.destroy)
+                    break
+        except:
+            pass  # 라벨 생성 창이 없으면 무시
         
         # 파일 감시를 통한 자동 새로고침도 작동하므로 추가 알림은 선택사항
     
@@ -339,17 +367,11 @@ class ZoneManager:
         cols_spin = tk.Spinbox(section_frame, from_=1, to=10, textvariable=cols_var, width=10)
         cols_spin.pack(side=tk.LEFT, padx=5)
         
-        # 섹션 설정 안내
+        # 섹션 설정 안내 (간단하게)
         section_info = tk.Label(input_frame, 
-                               text="💡 섹션 설정 안내:\n• 행/열: 1~10개까지 설정 가능\n• 총 섹션 수: 행 × 열 (최대 100개)\n• 구역이 많을수록 셀 크기가 작아집니다",
+                               text="💡 행/열: 1~10개까지 설정 가능",
                                font=("맑은 고딕", 8), fg="gray", justify=tk.LEFT)
         section_info.pack(anchor=tk.W, pady=(5, 0))
-        
-        # 설명
-        tk.Label(input_frame, text="설명:", font=("맑은 고딕", 10)).pack(anchor=tk.W, pady=(10, 0))
-        desc_var = tk.StringVar()
-        desc_entry = tk.Entry(input_frame, textvariable=desc_var, width=30)
-        desc_entry.pack(fill=tk.X, pady=5)
         
         # 버튼 프레임
         button_frame = tk.Frame(dialog)
@@ -386,7 +408,7 @@ class ZoneManager:
                 "sections": {
                     "rows": rows,
                     "columns": cols,
-                    "description": description or f"{zone_name} {rows}x{cols} 섹션"
+                    "description": f"{zone_name} {rows}x{cols} 섹션"
                 }
             }
             
@@ -394,17 +416,17 @@ class ZoneManager:
             dialog.destroy()
             messagebox.showinfo("추가 완료", f"구역 '{zone_name}' ({zone_code})이 추가되었습니다.")
         
-        # 추가 버튼
+        # 추가 버튼 (크기 증가)
         add_btn = tk.Button(button_frame, text="추가", command=add_zone,
-                           bg="#4CAF50", fg="white", font=("맑은 고딕", 10),
-                           relief=tk.FLAT, bd=0, padx=20, pady=5)
-        add_btn.pack(side=tk.LEFT, padx=5)
+                           bg="#4CAF50", fg="white", font=("맑은 고딕", 12, "bold"),
+                           relief=tk.FLAT, bd=0, padx=40, pady=10, width=8)
+        add_btn.pack(side=tk.LEFT, padx=10)
         
-        # 취소 버튼
+        # 취소 버튼 (크기 증가)
         cancel_btn = tk.Button(button_frame, text="취소", command=dialog.destroy,
-                              bg="#f44336", fg="white", font=("맑은 고딕", 10),
-                              relief=tk.FLAT, bd=0, padx=20, pady=5)
-        cancel_btn.pack(side=tk.LEFT, padx=5)
+                              bg="#f44336", fg="white", font=("맑은 고딕", 12, "bold"),
+                              relief=tk.FLAT, bd=0, padx=40, pady=10, width=8)
+        cancel_btn.pack(side=tk.LEFT, padx=10)
     
     def edit_selected_zone(self):
         """선택된 구역 편집"""
@@ -497,12 +519,6 @@ class ZoneManager:
         cols_spin = tk.Spinbox(section_frame, from_=1, to=10, textvariable=cols_var, width=10)
         cols_spin.pack(side=tk.LEFT, padx=5)
         
-        # 설명
-        tk.Label(input_frame, text="설명:", font=("맑은 고딕", 10)).pack(anchor=tk.W, pady=(10, 0))
-        desc_var = tk.StringVar(value=zone_data["sections"]["description"])
-        desc_entry = tk.Entry(input_frame, textvariable=desc_var, width=30)
-        desc_entry.pack(fill=tk.X, pady=5)
-        
         # 버튼 프레임
         button_frame = tk.Frame(dialog)
         button_frame.pack(pady=20)
@@ -519,7 +535,6 @@ class ZoneManager:
             
             rows = int(rows_var.get())
             cols = int(cols_var.get())
-            description = desc_var.get().strip()
             
             # 입력 검증
             if not zone_name:
@@ -533,7 +548,7 @@ class ZoneManager:
                 "sections": {
                     "rows": rows,
                     "columns": cols,
-                    "description": description or f"{zone_name} {rows}x{cols} 섹션"
+                    "description": f"{zone_name} {rows}x{cols} 섹션"
                 }
             }
             
@@ -541,17 +556,17 @@ class ZoneManager:
             dialog.destroy()
             messagebox.showinfo("수정 완료", f"구역 '{zone_name}' ({zone_code})이 수정되었습니다.")
         
-        # 수정 버튼
+        # 수정 버튼 (크기 증가)
         update_btn = tk.Button(button_frame, text="수정", command=update_zone,
-                              bg="#4CAF50", fg="white", font=("맑은 고딕", 10),
-                              relief=tk.FLAT, bd=0, padx=20, pady=5)
-        update_btn.pack(side=tk.LEFT, padx=5)
+                              bg="#4CAF50", fg="white", font=("맑은 고딕", 12, "bold"),
+                              relief=tk.FLAT, bd=0, padx=40, pady=10, width=8)
+        update_btn.pack(side=tk.LEFT, padx=10)
         
-        # 취소 버튼
+        # 취소 버튼 (크기 증가)
         cancel_btn = tk.Button(button_frame, text="취소", command=dialog.destroy,
-                              bg="#f44336", fg="white", font=("맑은 고딕", 10),
-                              relief=tk.FLAT, bd=0, padx=20, pady=5)
-        cancel_btn.pack(side=tk.LEFT, padx=5)
+                              bg="#f44336", fg="white", font=("맑은 고딕", 12, "bold"),
+                              relief=tk.FLAT, bd=0, padx=40, pady=10, width=8)
+        cancel_btn.pack(side=tk.LEFT, padx=10)
     
     def delete_selected_zones(self):
         """선택된 구역들 삭제 (다중선택 지원)"""

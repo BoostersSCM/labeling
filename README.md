@@ -1,119 +1,138 @@
-# 바코드 라벨 관리 시스템
+# 바코드 라벨 생성 시스템
 
-## 프로젝트 개요
-이 프로젝트는 제품의 바코드 라벨을 생성하고 관리하는 시스템입니다. 일련번호 기반 바코드 시스템을 사용하여 간단하고 효율적인 라벨 관리가 가능합니다.
+Streamlit을 사용한 바코드 라벨 생성 및 관리 시스템입니다.
 
 ## 주요 기능
 
-### 1. 라벨 생성 및 관리
-- **일련번호 기반 바코드**: 간단한 일련번호로 복잡한 정보 관리
-- **40mm x 30mm 용지 지원**: 작은 라벨 크기에 최적화
-- **4배 확대 해상도**: 높은 인식률을 위한 고해상도 바코드
-- **Code128 바코드**: 안정적인 바코드 인식
+- 🏷️ **바코드 라벨 생성**: 제품 정보를 바탕으로 30mm x 20mm 크기의 바코드 라벨 생성
+- 📊 **제품 관리**: Excel 파일을 통한 제품 정보 관리
+- 🗂️ **발행 이력 관리**: 라벨 발행 내역을 Excel 및 Google Sheets에 저장
+- 🖨️ **인쇄 지원**: 생성된 라벨을 PNG 파일로 내보내어 인쇄 가능
+- 🌐 **웹 인터페이스**: Streamlit을 통한 직관적인 웹 인터페이스
 
-### 2. 입고/출고 관리
-- **입고 관리**: 제품 입고 시 라벨 생성 및 재고 등록
-- **출고 관리**: 샘플재고만 출고 가능 (관리품 출고 제한)
-- **재고 추적**: 실시간 재고 현황 확인
+## 시스템 요구사항
 
-### 3. 바코드 스캔 및 정보 조회
-- **일련번호 스캔**: 바코드 스캔으로 상세 정보 조회
-- **제품 정보 매핑**: 일련번호와 제품코드, LOT, 유통기한 연결
-- **데이터베이스 기반**: SQLite를 사용한 안정적인 데이터 관리
+- Python 3.8 이상
+- Windows 10/11 (한글 폰트 지원)
+- 인터넷 연결 (Google Sheets 연동 시)
 
-## 시스템 구조
+## 설치 방법
 
-### 파일 구조
-```
-barcode_label/
-├── barcode_label/
-│   ├── label_gui.py          # 메인 라벨 생성 GUI
-│   ├── stock_manager.py      # 입고/출고 관리 시스템
-│   ├── label_dashboard.py    # 대시보드
-│   ├── location_visualizer.py # 위치 시각화
-│   ├── zone_manager.py       # 구역 관리
-│   ├── mysql_auth.py         # 데이터베이스 연결
-│   ├── execute_query.py      # 쿼리 실행
-│   └── boosters_query.py     # 쿼리 정의
-├── labeljpg/                 # 생성된 라벨 이미지
-├── zpl/                      # ZPL 코드 파일
-└── README.md                 # 프로젝트 설명서
-```
-
-### 데이터베이스 구조
-- **label_serial.db**: 일련번호와 라벨 정보 매핑
-- **issue_history.xlsx**: 라벨 발행 이력
-- **outbound_history.xlsx**: 출고 이력
-
-## 설치 및 실행
-
-### 필수 라이브러리
+1. 저장소 클론
 ```bash
-pip install tkinter
-pip install pandas
-pip install pillow
-pip install python-barcode
-pip install qrcode
-pip install tkcalendar
-pip install openpyxl
+git clone <repository-url>
+cd Barcode_label-main
 ```
 
-### 실행 방법
+2. 가상환경 생성 및 활성화
 ```bash
-# 라벨 생성 GUI 실행
-python barcode_label/label_gui.py
-
-# 입고/출고 관리 시스템 실행
-python barcode_label/stock_manager.py
+python -m venv venv
+venv\Scripts\activate  # Windows
+# 또는
+source venv/bin/activate  # Linux/Mac
 ```
+
+3. 필요한 패키지 설치
+```bash
+pip install -r requirements.txt
+```
+
+4. 설정 파일 생성
+   - `client_secrets.json`: Google Sheets API 인증 파일
+   - `mysql_auth.py`: MySQL 연결 설정 (선택사항)
 
 ## 사용 방법
 
-### 1. 라벨 생성
-1. **구분 선택**: 관리품 또는 샘플재고 선택
-2. **제품코드 입력**: 제품코드 또는 바코드 스캔
-3. **보관위치 입력**: A-01-01 형식으로 입력
-4. **LOT/유통기한**: 관리품의 경우 필수 입력
-5. **라벨 생성**: 일련번호가 자동 생성되고 바코드 생성
+### 1. Streamlit 앱 실행
+```bash
+python barcode_label/run_streamlit.py
+```
 
-### 2. 바코드 스캔
-1. **일련번호 스캔**: 생성된 라벨의 바코드 스캔
-2. **정보 조회**: 제품코드, LOT, 유통기한, 보관위치 정보 표시
-3. **데이터베이스 조회**: 일련번호로 연결된 모든 정보 확인
+### 2. 웹 브라우저에서 접속
+- http://localhost:8501
 
-### 3. 출고 관리
-1. **보관위치 입력**: 출고할 제품의 위치
-2. **제품코드 입력**: 출고할 제품의 코드
-3. **수량/반출자 입력**: 출고 수량과 반출자 정보
-4. **출고 실행**: 샘플재고만 출고 가능
+### 3. 라벨 생성
+1. 제품 코드 선택
+2. LOT 번호 입력
+3. 유통기한 입력
+4. 보관 위치 선택
+5. 버전 입력
+6. "라벨 생성" 버튼 클릭
 
-## 주요 특징
+### 4. 라벨 인쇄
+1. "인쇄용 파일 다운로드" 버튼 클릭
+2. 다운로드된 PNG 파일을 열기
+3. Ctrl+P로 인쇄
 
-### 일련번호 기반 시스템
-- **간단한 바코드**: 복잡한 정보 대신 일련번호만 사용
-- **높은 인식률**: 짧은 바코드로 인식률 향상
-- **공간 효율성**: 작은 라벨에 최적화된 바코드
+## 파일 구조
 
-### 관리품 출고 제한
-- **안전한 재고 관리**: 관리품은 출고 불가
-- **샘플재고만 출고**: 샘플재고만 출고 가능
-- **명확한 구분**: 관리품과 샘플재고의 명확한 구분
+```
+barcode_label/
+├── streamlit_app.py          # 메인 Streamlit 애플리케이션
+├── run_streamlit.py          # Streamlit 실행 스크립트
+├── google_sheets_manager.py  # Google Sheets 연동 관리
+├── stock_manager.py          # 재고 관리
+├── zone_manager.py           # 보관 위치 관리
+├── label_gui.py             # 기존 GUI 애플리케이션
+├── label_gui_30x20.py       # 30x20 라벨 전용 GUI
+├── barcode_printing.py      # 바코드 인쇄 관련
+├── location_visualizer.py   # 위치 시각화
+├── label_dashboard.py       # 대시보드
+├── products.xlsx            # 제품 정보 데이터
+├── labeljpg/                # 생성된 라벨 이미지
+├── zpl/                     # ZPL 파일
+└── requirements.txt         # 필요한 패키지 목록
+```
 
-### 고해상도 바코드
-- **4배 확대 해상도**: 640 x 480 픽셀
-- **Code128 바코드**: 안정적인 인식률
-- **최적화된 크기**: 40mm x 30mm 용지에 최적화
+## 주요 설정
 
-## 기술 스택
-- **Python 3.x**: 메인 프로그래밍 언어
-- **Tkinter**: GUI 프레임워크
-- **SQLite**: 로컬 데이터베이스
-- **Pandas**: 데이터 처리
-- **Pillow**: 이미지 처리
-- **python-barcode**: 바코드 생성
+### Google Sheets 연동
+1. Google Cloud Console에서 프로젝트 생성
+2. Google Sheets API 활성화
+3. 서비스 계정 생성 및 키 다운로드
+4. `client_secrets.json` 파일을 프로젝트 루트에 배치
+5. 서비스 계정 이메일을 Google Sheets에 공유
+
+### 제품 정보 관리
+- `products.xlsx` 파일에서 제품 정보 관리
+- 컬럼: 제품코드, 제품명, 구분, 유통기한
+
+### 보관 위치 관리
+- `zone_config.json`에서 보관 위치 설정
+- 예: A-01, A-02, B-01, B-02 등
+
+## 라벨 규격
+
+- **크기**: 30mm x 20mm (4배 확대하여 480x320 픽셀로 생성)
+- **포함 정보**: 바코드, 제품명, LOT, 유통기한, 보관위치, 버전
+- **폰트**: 시스템 한글 폰트 자동 감지 (Malgun Gothic, Gulim 등)
+
+## 문제 해결
+
+### 한글 폰트 문제
+- Windows에서 한글 폰트가 자동으로 감지됩니다
+- 문제가 있는 경우 `streamlit_app.py`의 `get_korean_font()` 함수를 수정하세요
+
+### Google Sheets 연결 문제
+- `client_secrets.json` 파일이 올바른 위치에 있는지 확인
+- 서비스 계정 이메일이 Google Sheets에 공유되어 있는지 확인
+- 인터넷 연결 상태 확인
+
+### 인쇄 문제
+- 인쇄용 파일을 다운로드하여 수동으로 인쇄
+- 프린터 드라이버가 올바르게 설치되어 있는지 확인
 
 ## 라이선스
-이 프로젝트는 BoostersSCM에서 개발되었습니다.
 
-## 문의
-프로젝트 관련 문의사항이 있으시면 개발팀에 연락해주세요.
+이 프로젝트는 MIT 라이선스 하에 배포됩니다.
+
+## 기여
+
+버그 리포트나 기능 제안은 Issues를 통해 알려주세요.
+
+## 변경 이력
+
+- v1.0.0: 초기 버전
+- v1.1.0: Google Sheets 연동 추가
+- v1.2.0: Streamlit 웹 인터페이스 추가
+- v1.3.0: 30x20 라벨 크기 최적화
