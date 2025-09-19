@@ -41,7 +41,7 @@ def get_korean_font(size):
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
     # 1순위: 앱에 포함된 폰트 파일 사용
-    font_path = os.path.join(current_dir, "fonts", "NotoSansKR-Regular.otf")
+    font_path = os.path.join(current_dir, "fonts", "NotoSansKR-Regular.ttf")
     print(f"1순위 폰트 경로 확인: {font_path}")
 
     if os.path.exists(font_path):
