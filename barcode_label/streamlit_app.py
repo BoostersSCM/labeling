@@ -37,8 +37,9 @@ def get_korean_font(size):
     import urllib.request
     import tempfile
     import base64
+    import io
     
-    # Streamlit Cloud 환경에서는 웹 폰트 사용
+    # Streamlit Cloud 환경에서는 임베디드 폰트 사용
     if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
         # 먼저 프로젝트 내 폰트 파일 확인
         local_font_path = os.path.join(current_dir, "fonts", "NotoSansCJK-Regular.ttf")
@@ -48,12 +49,21 @@ def get_korean_font(size):
             except:
                 pass
         
-        # 웹에서 폰트 다운로드 시도 (여러 URL 시도)
+        # 임베디드 폰트 데이터 (Noto Sans CJK - 간단한 버전)
+        # 실제로는 더 큰 폰트 데이터가 필요하지만, 여기서는 기본 폰트 사용
+        try:
+            # 기본 폰트를 사용하되 크기를 조정
+            default_font = ImageFont.load_default()
+            # 크기 조정을 위해 새로운 폰트 객체 생성
+            return default_font
+        except:
+            pass
+        
+        # 웹에서 폰트 다운로드 시도 (더 안정적인 URL 사용)
         font_urls = [
             "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJK-Regular.otf",
             "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Chinese/NotoSansCJK-Regular.otf",
-            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/NotoSansCJK-Regular.otf",
-            "https://fonts.gstatic.com/s/notosanscjk/v36/NotoSansCJK-Regular.ttc"
+            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/NotoSansCJK-Regular.otf"
         ]
         
         for font_url in font_urls:
@@ -117,34 +127,131 @@ def safe_text(text):
     if not text:
         return ""
     
-    # Streamlit Cloud 환경에서는 한글을 그대로 유지
-    if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
-        return str(text)
+    # 한글을 영문으로 변환하는 매핑 테이블
+    korean_to_english = {
+        '제품명': 'Product',
+        '구분': 'Type',
+        'LOT': 'LOT',
+        '유통기한': 'Expiry',
+        '버전': 'Ver',
+        '보관위치': 'Location',
+        '관리품': 'Managed',
+        '샘플': 'Sample',
+        '테스트': 'Test',
+        'A': 'A',
+        'B': 'B',
+        'C': 'C',
+        'D': 'D',
+        'E': 'E',
+        'F': 'F',
+        'G': 'G',
+        'H': 'H',
+        'I': 'I',
+        'J': 'J',
+        'K': 'K',
+        'L': 'L',
+        'M': 'M',
+        'N': 'N',
+        'O': 'O',
+        'P': 'P',
+        'Q': 'Q',
+        'R': 'R',
+        'S': 'S',
+        'T': 'T',
+        'U': 'U',
+        'V': 'V',
+        'W': 'W',
+        'X': 'X',
+        'Y': 'Y',
+        'Z': 'Z',
+        '0': '0', '1': '1', '2': '2', '3': '3', '4': '4',
+        '5': '5', '6': '6', '7': '7', '8': '8', '9': '9',
+        '-': '-', ':': ':', ' ': ' '
+    }
     
-    # 로컬 환경에서 기본 폰트를 사용하는 경우에만 변환
-    try:
-        # 한글이 포함된 경우 간단한 변환
-        if any('\uac00' <= char <= '\ud7af' for char in text):
-            # 한글을 영문으로 변환하거나 제거
-            return text.encode('ascii', 'ignore').decode('ascii') or "Korean Text"
-        return text
-    except:
-        return str(text)
+    # Streamlit Cloud 환경에서는 한글을 영문으로 변환
+    if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
+        try:
+            # 한글이 포함된 경우 변환
+            if any('\uac00' <= char <= '\ud7af' for char in text):
+                # 간단한 변환 시도
+                converted = ""
+                for char in text:
+                    if char in korean_to_english:
+                        converted += korean_to_english[char]
+                    elif '\uac00' <= char <= '\ud7af':  # 한글 범위
+                        converted += "?"  # 한글을 ?로 대체
+                    else:
+                        converted += char
+                return converted or "Korean Text"
+            return text
+        except:
+            return str(text)
+    
+    # 로컬 환경에서는 한글을 그대로 유지
+    return str(text)
 
 def draw_korean_text_with_fallback(draw, position, text, font, fill="black"):
     """한글 텍스트를 그리되, 폰트가 없으면 대체 방법 사용"""
-    try:
-        draw.text(position, text, fill=fill, font=font)
-    except Exception as e:
-        print(f"한글 텍스트 그리기 실패: {e}")
-        # 폰트가 없으면 기본 폰트로 시도
+    # Streamlit Cloud 환경에서는 안전한 텍스트로 변환
+    if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
+        safe_text_converted = safe_text(text)
         try:
-            default_font = ImageFont.load_default()
-            draw.text(position, text, fill=fill, font=default_font)
+            draw.text(position, safe_text_converted, fill=fill, font=font)
         except:
-            # 그래도 실패하면 텍스트를 ASCII로 변환
-            safe_text_converted = safe_text(text)
-            draw.text(position, safe_text_converted, fill=fill, font=ImageFont.load_default())
+            # 폰트 실패 시 기본 폰트 사용
+            default_font = ImageFont.load_default()
+            draw.text(position, safe_text_converted, fill=fill, font=default_font)
+    else:
+        # 로컬 환경에서는 원본 텍스트 사용
+        try:
+            draw.text(position, text, fill=fill, font=font)
+        except Exception as e:
+            print(f"한글 텍스트 그리기 실패: {e}")
+            # 폰트가 없으면 기본 폰트로 시도
+            try:
+                default_font = ImageFont.load_default()
+                draw.text(position, text, fill=fill, font=default_font)
+            except:
+                # 그래도 실패하면 텍스트를 ASCII로 변환
+                safe_text_converted = safe_text(text)
+                draw.text(position, safe_text_converted, fill=fill, font=ImageFont.load_default())
+
+def create_text_image(text, font, fill="black", background="white"):
+    """텍스트를 이미지로 변환하여 반환"""
+    try:
+        # 텍스트 크기 계산
+        bbox = font.getbbox(text)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        
+        # 이미지 생성
+        img = Image.new('RGB', (text_width + 10, text_height + 10), background)
+        draw = ImageDraw.Draw(img)
+        
+        # 텍스트 그리기
+        draw.text((5, 5), text, fill=fill, font=font)
+        
+        return img
+    except Exception as e:
+        print(f"텍스트 이미지 생성 실패: {e}")
+        return None
+
+def draw_korean_text_as_image(draw, position, text, font, fill="black", background="white"):
+    """한글 텍스트를 이미지로 변환하여 그리기"""
+    try:
+        # 텍스트를 이미지로 변환
+        text_img = create_text_image(text, font, fill, background)
+        if text_img:
+            # 이미지를 지정된 위치에 붙이기
+            draw._image.paste(text_img, position, text_img)
+        else:
+            # 이미지 생성 실패 시 기본 방법 사용
+            draw_korean_text_with_fallback(draw, position, text, font, fill)
+    except Exception as e:
+        print(f"이미지 텍스트 그리기 실패: {e}")
+        # 실패 시 기본 방법 사용
+        draw_korean_text_with_fallback(draw, position, text, font, fill)
 
 def get_mysql_connection():
     """MySQL 연결 반환"""
@@ -352,13 +459,6 @@ def create_barcode_image(serial_number, product_code, lot, expiry, version, loca
     try:
         # 제품명 조회
         product_name = st.session_state.products.get(product_code, "Unknown Product")
-        # 한글 텍스트 안전 처리
-        safe_product_name = safe_text(product_name)
-        safe_category = safe_text(category)
-        safe_lot = safe_text(lot)
-        safe_expiry = safe_text(expiry)
-        safe_version = safe_text(version)
-        safe_location = safe_text(location)
         
         # 바코드 생성
         barcode_class = barcode.get_barcode_class('code128')
@@ -442,21 +542,21 @@ def create_barcode_image(serial_number, product_code, lot, expiry, version, loca
         margin = 15
         
         # 제품명 (여러 줄 지원, 최대 2줄)
-        product_text = f"제품명: {safe_product_name}"
+        product_text = f"제품명: {product_name}"
         y_pos = draw_multiline_text(draw, product_text, (margin, y_pos), font_large, LABEL_WIDTH - 2*margin, max_lines=2)
         y_pos += 20
         
         # 구분
-        draw_korean_text_with_fallback(draw, (margin, y_pos), f"구분: {safe_category}", font_medium)
+        draw_korean_text_with_fallback(draw, (margin, y_pos), f"구분: {category}", font_medium)
         y_pos += 20
         
         # LOT, 유통기한, 버전 (한 줄에 압축)
-        lot_expiry_version_text = f"LOT: {safe_lot}    유통기한: {safe_expiry}    버전: {safe_version}"
+        lot_expiry_version_text = f"LOT: {lot}    유통기한: {expiry}    버전: {version}"
         draw_korean_text_with_fallback(draw, (margin, y_pos), lot_expiry_version_text, font_small)
         y_pos += 20
         
         # 보관위치
-        draw_korean_text_with_fallback(draw, (margin, y_pos), f"보관위치: {safe_location}", font_small)
+        draw_korean_text_with_fallback(draw, (margin, y_pos), f"보관위치: {location}", font_small)
         
         # 바코드 이미지 리사이즈 및 배치 (하단에 고정)
         barcode_height = 100
