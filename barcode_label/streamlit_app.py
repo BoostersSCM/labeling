@@ -43,8 +43,8 @@ def get_korean_font(size):
     if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
         # 먼저 프로젝트 내 폰트 파일 확인
         local_fonts = [
+            os.path.join(current_dir, "fonts", "malgun.ttf"),  # 맑은 고딕을 최우선으로
             os.path.join(current_dir, "fonts", "NotoSansCJK-Regular.ttf"),
-            os.path.join(current_dir, "fonts", "malgun.ttf"),
             os.path.join(current_dir, "fonts", "gulim.ttc"),
             os.path.join(current_dir, "fonts", "dotum.ttc"),
             os.path.join(current_dir, "fonts", "batang.ttc"),
@@ -54,8 +54,10 @@ def get_korean_font(size):
         for font_path in local_fonts:
             if os.path.exists(font_path):
                 try:
-                    print(f"로컬 폰트 사용: {font_path}")
-                    return ImageFont.truetype(font_path, size)
+                    print(f"로컬 폰트 사용 시도: {font_path}")
+                    font = ImageFont.truetype(font_path, size)
+                    print(f"폰트 로드 성공: {font_path}")
+                    return font
                 except Exception as e:
                     print(f"폰트 로드 실패 {font_path}: {e}")
                     continue
@@ -144,22 +146,44 @@ def safe_text(text):
 
 def draw_korean_text_with_fallback(draw, position, text, font, fill="black"):
     """한글 텍스트를 그리되, 폰트가 없으면 대체 방법 사용"""
+    if not text:
+        return
+        
+    print(f"텍스트 그리기 시도: '{text}' (폰트: {font})")
+    
     try:
         # 먼저 지정된 폰트로 시도
-        draw.text(position, text, fill=fill, font=font)
+        if font:
+            draw.text(position, text, fill=fill, font=font)
+            print(f"폰트로 텍스트 그리기 성공: {text}")
+            return
     except Exception as e:
         print(f"한글 텍스트 그리기 실패 (폰트: {font}): {e}")
-        # 폰트가 없으면 기본 폰트로 시도
+    
+    # 폰트가 없으면 기본 폰트로 시도
+    try:
+        default_font = ImageFont.load_default()
+        draw.text(position, text, fill=fill, font=default_font)
+        print(f"기본 폰트로 텍스트 그리기 성공: {text}")
+        return
+    except Exception as e2:
+        print(f"기본 폰트로도 실패: {e2}")
+    
+    # 그래도 실패하면 텍스트를 그대로 시도 (마지막 시도)
+    try:
+        draw.text(position, text, fill=fill)
+        print(f"폰트 없이 텍스트 그리기 성공: {text}")
+        return
+    except Exception as e3:
+        print(f"모든 텍스트 그리기 시도 실패: {text} - {e3}")
+        # 최후의 수단: 텍스트를 이미지로 변환해서 붙이기
         try:
-            default_font = ImageFont.load_default()
-            draw.text(position, text, fill=fill, font=default_font)
-        except Exception as e2:
-            print(f"기본 폰트로도 실패: {e2}")
-            # 그래도 실패하면 텍스트를 그대로 시도 (마지막 시도)
-            try:
-                draw.text(position, text, fill=fill)
-            except:
-                print(f"모든 텍스트 그리기 시도 실패: {text}")
+            text_img = create_text_image(text, font, fill)
+            if text_img:
+                label.paste(text_img, position, text_img)
+                print(f"이미지로 텍스트 그리기 성공: {text}")
+        except Exception as e4:
+            print(f"이미지로도 텍스트 그리기 실패: {text} - {e4}")
 
 def create_text_image(text, font, fill="black", background="white"):
     """텍스트를 이미지로 변환하여 반환"""
@@ -418,31 +442,38 @@ def create_barcode_image(serial_number, product_code, lot, expiry, version, loca
         draw = ImageDraw.Draw(label)
         
         # 한글 폰트 설정 (30x20 라벨에 맞는 크기)
+        print("한글 폰트 로딩 시작...")
         try:
             font_large = get_korean_font(20)    # 제품명용
             font_medium = get_korean_font(16)   # 구분용
             font_small = get_korean_font(14)    # 상세정보용
             font_tiny = get_korean_font(12)     # 바코드 텍스트용
             
+            print(f"폰트 로딩 결과:")
+            print(f"  font_large: {font_large}")
+            print(f"  font_medium: {font_medium}")
+            print(f"  font_small: {font_small}")
+            print(f"  font_tiny: {font_tiny}")
+            
             # 폰트가 None인 경우 기본 폰트 사용
             if font_large is None:
+                print("font_large가 None이므로 기본 폰트 사용")
                 font_large = ImageFont.load_default()
             if font_medium is None:
+                print("font_medium이 None이므로 기본 폰트 사용")
                 font_medium = ImageFont.load_default()
             if font_small is None:
+                print("font_small이 None이므로 기본 폰트 사용")
                 font_small = ImageFont.load_default()
             if font_tiny is None:
+                print("font_tiny가 None이므로 기본 폰트 사용")
                 font_tiny = ImageFont.load_default()
-            
-            # 폰트 로드 상태 확인
-            print(f"폰트 로드 상태 - Large: {font_large}, Medium: {font_medium}, Small: {font_small}, Tiny: {font_tiny}")
         except Exception as e:
-            print(f"폰트 로드 오류: {e}")
-            # 기본 폰트 사용
-            font_large = ImageFont.load_default()
-            font_medium = ImageFont.load_default()
-            font_small = ImageFont.load_default()
-            font_tiny = ImageFont.load_default()
+            print(f"폰트 로딩 오류: {e}")
+            import traceback
+            traceback.print_exc()
+            # 모든 폰트를 기본 폰트로 설정
+            font_large = font_medium = font_small = font_tiny = ImageFont.load_default()
         
         # 폰트 로드 상태 확인 (디버그용)
         if hasattr(font_large, 'path'):
