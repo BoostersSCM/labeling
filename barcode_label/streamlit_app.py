@@ -42,12 +42,23 @@ def get_korean_font(size):
     # Streamlit Cloud 환경에서는 웹 폰트 사용
     if os.environ.get('STREAMLIT_CLOUD', False) or os.environ.get('STREAMLIT_SERVER_HEADLESS', False):
         # 먼저 프로젝트 내 폰트 파일 확인
-        local_font_path = os.path.join(current_dir, "fonts", "NotoSansCJK-Regular.ttf")
-        if os.path.exists(local_font_path):
-            try:
-                return ImageFont.truetype(local_font_path, size)
-            except:
-                pass
+        local_fonts = [
+            os.path.join(current_dir, "fonts", "NotoSansCJK-Regular.ttf"),
+            os.path.join(current_dir, "fonts", "malgun.ttf"),
+            os.path.join(current_dir, "fonts", "gulim.ttc"),
+            os.path.join(current_dir, "fonts", "dotum.ttc"),
+            os.path.join(current_dir, "fonts", "batang.ttc"),
+            os.path.join(current_dir, "fonts", "gungsuh.ttc")
+        ]
+        
+        for font_path in local_fonts:
+            if os.path.exists(font_path):
+                try:
+                    print(f"로컬 폰트 사용: {font_path}")
+                    return ImageFont.truetype(font_path, size)
+                except Exception as e:
+                    print(f"폰트 로드 실패 {font_path}: {e}")
+                    continue
         
         # 웹에서 폰트 다운로드 시도 (더 안정적인 URL 사용)
         font_urls = [
