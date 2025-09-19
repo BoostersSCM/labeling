@@ -967,13 +967,17 @@ def show_settings_page():
         
         if st.button("☁️ 구글 스프레드시트 설정", use_container_width=True):
             try:
-                result = sheets_manager.setup_initial_config()
+                # 새 스프레드시트 생성
+                result = sheets_manager.setup_initial_config('new')
                 if result:
                     st.success("구글 스프레드시트 설정이 완료되었습니다!")
+                    st.info("새 스프레드시트가 생성되었습니다. 서비스 계정 이메일을 스프레드시트에 공유하세요.")
                 else:
                     st.error("구글 스프레드시트 설정에 실패했습니다.")
             except Exception as e:
                 st.error(f"설정 오류: {e}")
+                import traceback
+                st.error(f"상세 오류: {traceback.format_exc()}")
     else:
         st.warning("구글 스프레드시트 연동 모듈을 사용할 수 없습니다.")
     

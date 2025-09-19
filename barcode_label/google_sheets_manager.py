@@ -120,30 +120,43 @@ class GoogleSheetsManager:
     
     def create_spreadsheet(self, title="바코드 라벨 발행이력"):
         """새 구글 스프레드시트 생성"""
+        print(f"스프레드시트 생성 시작: {title}")
+        
         if not self.authenticate():
+            print("인증 실패로 스프레드시트 생성 불가")
             return None
         
         try:
+            print("구글 스프레드시트 API 호출 중...")
             spreadsheet = self.service.create(title)
             self.spreadsheet_id = spreadsheet.id
+            print(f"스프레드시트 생성 성공: {self.spreadsheet_id}")
             
             # 기본 시트 이름 변경
+            print("시트 이름 변경 중...")
             worksheet = spreadsheet.get_worksheet(0)
             worksheet.update_title(self.sheet_name)
+            print(f"시트 이름 변경 완료: {self.sheet_name}")
             
             # 헤더 추가
+            print("헤더 추가 중...")
             headers = [
                 '일련번호', '구분', '제품코드', '제품명', 'LOT', 
                 '유통기한', '폐기일자', '보관위치', '버전', '발행일시'
             ]
             worksheet.append_row(headers)
+            print("헤더 추가 완료")
             
             # 설정 저장
+            print("설정 저장 중...")
             self.save_config()
+            print("설정 저장 완료")
             
             return spreadsheet.id
         except Exception as e:
             print(f"스프레드시트 생성 오류: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def get_spreadsheet_url(self):
@@ -308,6 +321,7 @@ class GoogleSheetsManager:
         
         if spreadsheet_id.lower() == 'new':
             # 새 스프레드시트 생성
+            print("새 구글 스프레드시트를 생성합니다...")
             new_id = self.create_spreadsheet()
             if new_id:
                 # 서비스 계정 이메일 정보 표시
